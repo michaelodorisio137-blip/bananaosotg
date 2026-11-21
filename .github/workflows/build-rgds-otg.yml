@@ -1,0 +1,95 @@
+name: Build RG DS BananaOS with USB OTG storage
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/build-rgds-otg.yml'
+      - 'apply.py'
+      - 'usb-sd2'
+
+permissions:
+  contents: read
+
+jobs:
+  firmware:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      BR2_DL_DIR: ${{ github.workspace }}/dl
+    steps:
+      - name: Checkout patch source
+        uses: actions/checkout@v4
+
+      - name: Free disk space for Buildroot
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          df -h /
+
+      - name: Install upstream build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential bc bison flex libssl-dev libelf-dev unzip rsync cpio file wget python3-dev swig libgnutls28-dev
+
+      - name: Validate patch scripts
+        run: |
+          python3 -m py_compile apply.py
+          sh -n usb-sd2
+
+      - name: Get BananaOS source
+        run: |
+          git clone --depth 1 --branch main https://github.com/JorreFog/BananaLinux.git BananaLinux
+          git -C BananaLinux rev-parse HEAD | tee upstream-commit.txt
+
+      - name: Apply USB storage integration
+        run: |
+          python3 apply.py BananaLinux
+          sh -n BananaLinux/system/rootfs/usr/libexec/banana/usb-sd2
+          sh -n BananaLinux/system/rootfs/usr/libexec/banana/sd2
+          sh -n BananaLinux/system/rootfs/etc/init.d/rcS
+          git -C BananaLinux diff --check
+          git -C BananaLinux status --short
+          grep -n 'USB drive label' BananaLinux/ui/src/fileops.cpp
+
+      - name: Restore downloads cache
+        uses: actions/cache/restore@v4
+        with:
+          path: dl
+          key: otg-dl-${{ hashFiles('apply.py', 'usb-sd2') }}
+          restore-keys: otg-dl-
+
+      - name: Compile RG DS image
+        run: make -C BananaLinux rgds
+
+      - name: Save download cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: dl
+          key: otg-dl-${{ github.run_id }}
+
+      - name: Validate firmware image
+        run: |
+          test -s BananaLinux/output/rgds/images/banana-rgds.img.gz
+          gzip -t BananaLinux/output/rgds/images/banana-rgds.img.gz
+          sha256sum BananaLinux/output/rgds/images/banana-rgds.img.gz > SHA256SUMS.txt
+
+      - name: Upload firmware image
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: BananaOS-RGDS-USB-OTG
+          retention-days: 7
+          compression-level: 0
+          path: |
+            BananaLinux/output/rgds/images/banana-rgds.img.gz
+            BananaLinux/output/rgds/images/banana-rgds-*.update.tar
+            SHA256SUMS.txt
+            upstream-commit.txt
+
+      - name: Diagnostic listing on failure
+        if: failure()
+        run: |
+          df -h /
+          ls -lah BananaLinux/output/rgds/images/ 2>/dev/null || true
+          ls -t BananaLinux/output/rgds/build 2>/dev/null | head -20 || true
