@@ -1,0 +1,102 @@
+#!/bin/sh
+# Experimental RG DS (original, single-SD-slot) USB mass-storage integration.
+# Uses the existing BananaOS secondary-card mount path so the built-in Files
+# browser can see the attached drive without UI changes.
+# FAT32/exFAT only. Do not unplug during writes. Use 'usb-sd2 eject' first.
+M=/run/sd2
+S=/run/banana/sd2
+LOCK=/run/banana/usb-sd2.lock
+
+attached_disk() {
+    for d in /sys/class/block/sd[a-z]; do
+        [ -e "$d" ] || continue
+        path=$(readlink -f "$d/device" 2>/dev/null) || continue
+        # USB mass storage: the SCSI device is under a USB bus device.
+        case "$path" in *'/usb'[0-9]*/*) printf '%s\n' "${d##*/}"; return 0 ;; esac
+    done
+    return 1
+}
+
+current_mount() { awk '$2 == "/run/sd2" {print $1; exit}' /proc/mounts; }
+
+roms_pointer() {
+    on=$(sed -n 's/^sd2_roms *= *//p' /data/banana/settings.conf 2>/dev/null | tail -n 1)
+    [ -n "$on" ] || on=$(sed -n 's/^sd2_roms *= *//p' /etc/banana/settings.conf 2>/dev/null | tail -n 1)
+    if [ "$on" != off ] && [ -d "$M/roms" ] && [ -n "$(current_mount)" ]; then
+        printf '%s\n' "$M/roms" > "$S/roms"
+    else
+        rm -f "$S/roms"
+    fi
+}
+
+scan() {
+    mkdir -p "$M" "$S"
+    # On RG DS there is no second SD slot; advertise removable media to settings.
+    : > "$S/slot"
+    : > "$S/usb"
+    if ! mkdir "$LOCK" 2>/dev/null; then return 0; fi
+    trap 'rmdir "$LOCK" 2>/dev/null' EXIT HUP INT TERM
+
+    disk=$(attached_disk || true)
+    old=$(current_mount)
+    if [ -z "$disk" ]; then
+        rm -f "$S/ejected" "$S/roms"
+        if [ -n "$old" ]; then umount "$M" 2>/dev/null || umount -l "$M" 2>/dev/null; fi
+        return 0
+    fi
+
+    [ -e "$S/ejected" ] && { rm -f "$S/roms"; return 0; }
+    if [ -n "$old" ]; then
+        case "$old" in /dev/"$disk"[0-9]*|/dev/"$disk")
+            [ -b "$old" ] && { roms_pointer; return 0; }
+            ;;
+        esac
+        umount "$M" 2>/dev/null || umount -l "$M" 2>/dev/null
+        rm -f "$S/roms"
+    fi
+
+    : > "$S/busy"
+    # Try existing partitions first, then an unpartitioned/superfloppy volume.
+    # The base BananaOS kernel already includes USB_STORAGE, VFAT and EXFAT.
+    for volume in /dev/"$disk"[0-9]* /dev/"$disk"; do
+        [ -b "$volume" ] || continue
+        if mount -t exfat -o rw,noatime,fmask=0000,dmask=0000 "$volume" "$M" 2>/dev/null ||
+           mount -t vfat -o rw,noatime,fmask=0000,dmask=0000,utf8 "$volume" "$M" 2>/dev/null; then
+            logger -t usb-sd2 "mounted $volume at $M"
+            roms_pointer
+            rm -f "$S/busy"
+            return 0
+        fi
+    done
+    logger -t usb-sd2 "USB device detected but no FAT32/exFAT volume could be mounted"
+    rm -f "$S/roms" "$S/busy"
+    return 1
+}
+
+eject() {
+    mkdir -p "$M" "$S"
+    [ -n "$(current_mount)" ] || { echo 'No USB drive is mounted'; return 1; }
+    sync
+    if umount "$M"; then
+        rm -f "$S/roms"
+        : > "$S/ejected"
+        echo 'USB drive ejected. Remove it before inserting another.'
+    else
+        echo 'USB drive is busy; close Files or stop your game and retry.' >&2
+        return 1
+    fi
+}
+
+case "${1:-scan}" in
+    scan) scan ;;
+    watch)
+        # The second-card helper is otherwise called only for MMC uevents.
+        while :; do
+            # Run each scan in its own shell so the EXIT trap releases its lock.
+            "$0" scan
+            sleep 2
+        done
+        ;;
+    eject) eject ;;
+    *) echo 'Usage: usb-sd2 {scan|watch|eject}' >&2; exit 2 ;;
+esac
