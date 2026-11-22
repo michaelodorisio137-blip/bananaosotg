@@ -48,6 +48,7 @@ allowed_changed = {
     "ui/src/splash.cpp",                # DUNGEON O boot
     "system/rootfs/usr/libexec/banana/run-drastic",
     "buildroot/package/superdrastic/superdrastic.mk",
+    "buildroot/package/libretro-mgba/libretro-mgba.mk",
 }
 changed = set(git("diff", "--name-only").splitlines())
 unexpected = sorted(changed - allowed_changed)
@@ -163,6 +164,17 @@ if ('"DSFLIP_CPAD"' not in patched("ui/src/settings.cpp") or
 cpad_file = root / "buildroot/patches/superdrastic/0003-rgds-cpad-guest-ram.patch"
 if not cpad_file.is_file() or "rgds_cpad_store" not in cpad_file.read_text():
     sys.exit("Real analog guest-memory bridge missing")
+
+# mGBA experimental viewport core integrity: normal mGBA retained byte-for-byte
+# in its original build, and the new 320x204 core has its own name.
+if '"mgba_expanded", "mGBA Expanded 320x204 (experimental)"' not in patched("ui/src/settings.cpp"):
+    sys.exit("Experimental mGBA core selector missing")
+mgba_mk = patched("buildroot/package/libretro-mgba/libretro-mgba.mk")
+for token in ("mgba_original_libretro.so", "mgba_expanded_libretro.so", "LIBRETRO_MGBA_POST_BUILD_HOOKS"):
+    if token not in mgba_mk: sys.exit("mGBA dual-core build recipe incomplete: "+token)
+source_patch = root / "buildroot/package/libretro-mgba/rgds-mgba-viewport-source.py"
+if not source_patch.is_file() or 'GBA_VIDEO_HORIZONTAL_PIXELS = 320' not in source_patch.read_text():
+    sys.exit("mGBA 320x204 renderer source transformation missing")
 
 # This protects important existing features from accidental removal in source.
 for path, tokens in {
