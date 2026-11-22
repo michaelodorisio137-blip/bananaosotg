@@ -167,6 +167,8 @@ def main():
                     "--typecode=%s:%s" % (number, kind),
                     "--change-name=%s:%s" % (number, name)]
         run(*cmd, disk)
+        # Match genimage bootable=true on the source GPT boot partition.
+        run("sgdisk", "--attributes=1:set:2", disk)
         run("sgdisk", "--verify", disk)
         now = layout(disk)["partitions"]
         if len(now) != 4 or part_info(now[3]) != (start, size):
