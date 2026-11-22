@@ -1,11 +1,247 @@
 --- a/src/dsflip.c
 +++ b/src/dsflip.c
-@@ -1154,7 +1154,20 @@
-  * Action Replay patches require a separate guest-memory analog bridge.
+@@ -1155,244 +1155,268 @@
   * SDL joystick axes 2/3 are the original RG DS's right stick. */
  static int rgds_analog_mode = -1, rgds_analog_sensitivity = 100, rgds_analog_deadzone = 20;
--static int rgds_stick_x, rgds_stick_y, rgds_analog_down;
-+static int rgds_stick_x, rgds_stick_y, rgds_analog_down;
+ static int rgds_stick_x, rgds_stick_y, rgds_analog_down;
+-static int rgds_real_touch;
+-static uint32_t rgds_last_tick;
+-static void rgds_analog_button(int down) {
+-    sdl_ev e;
+-    memset(&e, 0, sizeof e);
+-    e.b.type = down ? 0x401 : 0x402;
+-    e.b.ts = SDL_GetTicks(); e.b.win = window ? SDL_GetWindowID(window) : 1;
+-    e.b.button = 1; e.b.state = down ? 1 : 0; e.b.clicks = 1;
+-    e.b.x = sty_x >= 0 ? sty_x : 128;
+-    e.b.y = sty_y >= 0 ? sty_y : 96;
+-    push_ev(&e);
+-}
+-static void rgds_analog_setup(void) {
+-    const char *v = getenv("DSFLIP_ANALOG_TOUCH");
+-    rgds_analog_mode = v && !strcmp(v, "touch") ? 1 : v && !strcmp(v, "fps") ? 2 : 0;
+-    v = getenv("DSFLIP_ANALOG_SENSITIVITY");
+-    if (v) { int n = atoi(v); if (n >= 25 && n <= 250) rgds_analog_sensitivity = n; }
+-    v = getenv("DSFLIP_ANALOG_DEADZONE");
+-    if (v) { int n = atoi(v); if (n >= 0 && n <= 60) rgds_analog_deadzone = n; }
+-    if (rgds_analog_mode)
+-        LOG("[rgds-analog] right stick: %s, deadzone %d%%, sensitivity %d%%\n",
+-            rgds_analog_mode == 1 ? "virtual stylus" : "FPS stylus", rgds_analog_deadzone, rgds_analog_sensitivity);
+-}
+-static void rgds_analog_tick(void) {
+-    if (rgds_analog_mode < 0) rgds_analog_setup();
+-    if (!rgds_analog_mode) return;
+-    uint32_t now = SDL_GetTicks();
+-    uint32_t dt = rgds_last_tick ? now - rgds_last_tick : 16;
+-    if (dt < 16) return;
+-    rgds_last_tick = now;
+-    if (dt > 40) dt = 40;
+-    float x = rgds_stick_x / 32768.0f, y = rgds_stick_y / 32768.0f;
+-    float mag = sqrtf(x * x + y * y), dz = rgds_analog_deadzone / 100.0f;
+-    int available = !menu_touch && touch_rect_ok &&
+-                    !__atomic_load_n(&rgds_real_touch, __ATOMIC_RELAXED);
+-    if (!available || mag < dz + 0.001f) {
+-        if (rgds_analog_down) { rgds_analog_button(0); rgds_analog_down = 0; }
+-        return;
+-    }
+-    float scale = fminf(1.0f, (mag - dz) / (1.0f - dz)) / mag;
+-    x *= scale * rgds_analog_sensitivity / 100.0f;
+-    y *= scale * rgds_analog_sensitivity / 100.0f;
+-    if (!rgds_analog_down) {
+-        stylus_move(128, 96, 0, 1);
+-        rgds_analog_button(1);
+-        rgds_analog_down = 1;
+-    }
+-    int tx, ty;
+-    if (rgds_analog_mode == 1) {
+-        /* Absolute virtual thumb-stick: centre = DS touch centre. */
+-        tx = (int)lroundf(128 + x * 60);
+-        ty = (int)lroundf(96 + y * 60);
+-    } else {
+-        /* Continuous analog aim velocity for touch-driven shooters. */
+-        tx = sty_x + (int)lroundf(x * dt * 0.25f);
+-        ty = sty_y + (int)lroundf(y * dt * 0.25f);
+-    }
+-    if (tx < 0) tx = 0; if (tx > 255) tx = 255;
+-    if (ty < 0) ty = 0; if (ty > 191) ty = 191;
+-    stylus_move(tx, ty, 1, 0);
+-}
+-
+-static void touch_emit_on(int panel, int down_change, int down, int x, int y, int xmax, int ymax) {
+-    if (down_change && panel == (dsflip_swap && !menu_touch ? 0 : 1)) {
+-        __atomic_store_n(&rgds_real_touch, down, __ATOMIC_RELAXED);
+-        if (down && rgds_analog_down) { rgds_analog_button(0); rgds_analog_down = 0; }
+-    }
+-    int rx = x, ry = y;
+-    if (touch_inv_x) x = xmax - x;      /* raw touch is already aligned with the panel on the RG DS */
+-    if (touch_inv_y) y = ymax - y;
+-    if (panel == 1 && menu_touch_event(down_change, down, x, y, xmax, ymax)) return;   /* the in-game menu is up (menu.c) */
+-    /* the stylus is the DS's bottom screen's: the bottom panel's touch, or the top panel's while the screens are swapped
+-     * (and DraStic's menu, on the bottom panel, takes none either way). A touch held across a swap is let go. */
+-    static int was_on = -1;
+-    int want = dsflip_swap && !menu_touch ? 0 : 1;
+-    if (panel != want) {
+-        if (was_on == panel && !down_change) { down_change = 1; down = 0; }   /* (ends the stylus press it started) */
+-        else return;
+-    }
+-    if (down_change) was_on = down ? panel : -1;
+-    /* the bottom panel shows exactly the bottom DS screen: panel pixels -> DS pixels is a straight rescale.
+-     * DraStic's menu (also on the bottom panel) takes no touch: its input loop (r2.5.2.2, aarch64) handles only
+-     * SDL key, joystick axis/hat/button events, never mouse or finger events, so taps in it go nowhere. */
+-    if (!touch_rect_ok) return;
+-    /* a shader may draw the DS screen into a rectangle of the panel (ds-integer: 512x384, centred): map into it.
+-     * A touch that starts outside it (on the bezel) is ignored until it lifts; one that slides out is clamped. */
+-    int x0 = 0, y0 = 0, w = xmax + 1, h = ymax + 1;
+-    if (vp_w > 0 && vp_h > 0) {
+-        int pw = P[1].mode.hdisplay ? P[1].mode.hdisplay : 640, ph = P[1].mode.vdisplay ? P[1].mode.vdisplay : 480;
+-        x0 = vp_x * (xmax + 1) / pw; y0 = vp_y * (ymax + 1) / ph; w = vp_w * (xmax + 1) / pw; h = vp_h * (ymax + 1) / ph;
+-    }
+-    if (down_change && down) touch_outside = x < x0 || x >= x0 + w || y < y0 || y >= y0 + h;
+-    if (touch_outside) { if (down_change && !down) touch_outside = 0; return; }
+-    int lx = (int)((long long)(x - x0) * 256 / w);
+-    int ly = (int)((long long)(y - y0) * 192 / h);
+-    sdl_ev e;
+-    uint32_t wid = window ? SDL_GetWindowID(window) : 1, ts = SDL_GetTicks();
+-    if (lx < 0) lx = 0;
+-    if (ly < 0) ly = 0;
+-    if (lx > 255) lx = 255;
+-    if (ly > 191) ly = 191;
+-    stylus_move(lx, ly, down, down_change && down);
+-    if (down_change && down) {
+-        LOG("[touch] down raw %d,%d -> ds %d,%d\n", rx, ry, lx, ly);
+-        if (tdump_n < touch_dumps) { tdump_y = ly; tdump_x = lx; }
+-    }
+-    if (down_change) {
+-        memset(&e, 0, sizeof e);
+-        e.b.type = down ? 0x401 : 0x402; e.b.ts = ts; e.b.win = wid; e.b.button = 1; e.b.state = down ? 1 : 0; e.b.clicks = 1;
+-        e.b.x = lx; e.b.y = ly;
+-        push_ev(&e);
+-    }
+-    st_touch++;
+-}
+-
+-static void touch_emit(int down_change, int down, int x, int y, int xmax, int ymax) { touch_emit_on(1, down_change, down, x, y, xmax, ymax); }
+-
+-/* test hook: lines "x y" written to /tmp/dsflip-tap inject a tap at those bottom-PANEL pixels, through the same
+- * path as a real touch */
+-static void *tap_fifo_thread(void *a) {
+-    (void)a;
+-    unlink("/tmp/dsflip-tap"); mkfifo("/tmp/dsflip-tap", 0600);
+-    for (;;) {
+-        FILE *f = fopen("/tmp/dsflip-tap", "r"); if (!f) return 0;
+-        int x, y;
+-        while (fscanf(f, "%d %d", &x, &y) == 2) {
+-            touch_emit(1, 1, x, y, 639, 479);
+-            usleep(150000);
+-            touch_emit(1, 0, x, y, 639, 479);
+-            LOG("[tap] injected panel %d,%d%s\n", x, y, menu_touch ? " (menu: ignored)" : "");
+-        }
+-        fclose(f);
+-    }
+-    return 0;
+-}
+-
+-static int touch_find(const char *want, char *path, size_t n) {   /* the evdev node whose device path contains want */
+-    glob_t g; *path = 0;
+-    if (glob("/sys/class/input/event*", 0, 0, &g)) return -1;
+-    for (size_t i = 0; i < g.gl_pathc && !*path; i++) {
+-        char dev[300], real_[PATH_MAX]; snprintf(dev, sizeof dev, "%s/device", g.gl_pathv[i]);   /* (realpath wants PATH_MAX: a smaller buffer aborts under _FORTIFY_SOURCE) */
+-        if (realpath(dev, real_) && strstr(real_, want)) snprintf(path, n, "/dev/input/%s", strrchr(g.gl_pathv[i], '/') + 1);
+-    }
+-    globfree(&g);
+-    return *path ? 0 : -1;
+-}
+-
+-/* the other touchscreen (the RG DS's top panel's): a multitouch device whose path doesn't contain `not` */
+-static int touch_find_other(const char *not_, char *path, size_t n) {
+-    glob_t g; *path = 0;
+-    if (glob("/sys/class/input/event*", 0, 0, &g)) return -1;
+-    for (size_t i = 0; i < g.gl_pathc && !*path; i++) {
+-        char dev[300], real_[PATH_MAX]; snprintf(dev, sizeof dev, "%s/device", g.gl_pathv[i]);
+-        if (!realpath(dev, real_) || strstr(real_, not_)) continue;
+-        char node[64]; snprintf(node, sizeof node, "/dev/input/%s", strrchr(g.gl_pathv[i], '/') + 1);
+-        int f = open(node, O_RDONLY | O_CLOEXEC); if (f < 0) continue;
+-        unsigned long abs_[1] = { 0 };
+-        if (ioctl(f, EVIOCGBIT(EV_ABS, sizeof abs_), abs_) >= 0 && (abs_[0] >> 0x35 & 1) && (abs_[0] >> 0x36 & 1)) snprintf(path, n, "%s", node);
+-        close(f);
+-    }
+-    globfree(&g);
+-    return *path ? 0 : -1;
+-}
+-
+-/* Reads the touchscreen for the whole session. If the device goes away (a suspend/resume or a driver rebind removes
+- * and recreates it), a held stylus is released and the device is found and opened again. */
+-static const char *touch_bottom;   /* the bottom panel's touchscreen's device path fragment (DSFLIP_TOUCH) */
+-static void *touch_thread_on(int panel) {
+-    const char *want = touch_bottom;
+-    int missing_logged = 0;
+-    for (;;) {
+-        char path[64];
+-        int tfd = (panel ? touch_find(want, path, sizeof path) : touch_find_other(want, path, sizeof path)) ? -1 : open(path, O_RDONLY | O_CLOEXEC);
+-        if (tfd < 0) {
+-            if (!panel) { if (!missing_logged++) LOG("[dsflip] no top touchscreen: swapped screens take no touch\n"); if (missing_logged > 20) return 0; sleep(1); continue; }
+-            if (!missing_logged++) LOG("[dsflip] no touchscreen matching %s (still looking)\n", want);
+-            usleep(500000); continue;
+-        }
+-        missing_logged = 0;
+-        int ax[6] = { 0 }, ay[6] = { 0 };
+-        ioctl(tfd, 0x80184540 + 0x35, ax); ioctl(tfd, 0x80184540 + 0x36, ay);   /* EVIOCGABS(ABS_MT_POSITION_X/Y) */
+-        int xmax = ax[2] > 0 ? ax[2] : 639, ymax = ay[2] > 0 ? ay[2] : 479;
+-        LOG("[dsflip] touch %s (%s panel) range %dx%d\n", path, panel ? "bottom" : "top", xmax + 1, ymax + 1);
+-        struct { long s, us; uint16_t type, code; int32_t value; } ev[32];
+-        int x = 0, y = 0, down = 0, was_down = 0;
+-        ssize_t n;
+-        for (;;) {
+-            n = read(tfd, ev, sizeof ev);
+-            if (n < 0 && errno == EINTR) continue;
+-            if (n <= 0) break;
+-            for (int i = 0; i < (int)(n / sizeof ev[0]); i++) {
+-                if (ev[i].type == 3 && (ev[i].code == 0x35 || ev[i].code == 0)) x = ev[i].value;
+-                else if (ev[i].type == 3 && (ev[i].code == 0x36 || ev[i].code == 1)) y = ev[i].value;
+-                else if (ev[i].type == 1 && ev[i].code == 0x14a) down = ev[i].value != 0;   /* BTN_TOUCH */
+-                else if (ev[i].type == 0 && ev[i].code == 0) {                                /* SYN_REPORT */
+-                    if (down || was_down) touch_emit_on(panel, down != was_down, down, x, y, xmax, ymax);
+-                    was_down = down;
+-                }
+-            }
+-        }
+-        LOG("[dsflip] touch read ended (%s): reopening\n", n < 0 ? strerror(errno) : "end of file");
+-        close(tfd);
+-        if (was_down) touch_emit_on(panel, 1, 0, x, y, xmax, ymax);      /* don't leave DraStic's stylus pressed */
+-        usleep(200000);
+-    }
+-    return 0;
+-}
+-static void *touch_thread(void *a) { (void)a; return touch_thread_on(1); }
+-static void *touch_thread_top(void *a) { (void)a; return touch_thread_on(0); }
+-
+-void lid_poll(void);
+-int SDL_PollEvent(void *e) {
+-    REAL(int, SDL_PollEvent, void *);
+-    if (ok) lid_poll();                              /* the lid and HOME (lid.c) */
+-    if (ok && e && resume_poll(e)) return 1;         /* a save/load state control press (resume.c) */
+-    if (tq_head != tq_tail) {
+-        lock(&tmu);
+-        if (tq_head != tq_tail) {
+-            if (tq[tq_tail].type == EV_BARRIER) { tq_tail = (tq_tail + 1) % QN; unlock(&tmu); return 0; }
+-            if (e) { memcpy(e, &tq[tq_tail], sizeof tq[0]); tq_tail = (tq_tail + 1) % QN; }
+-            unlock(&tmu);
+-            return 1;
+-        }
+-        unlock(&tmu);
+-    }
+-    int r = real(e);
+-    if (r && e && ok) {
+-        uint32_t event_type;
+-        memcpy(&event_type, e, sizeof event_type);
+-        if (event_type == 0x600) { /* SDL_JOYAXISMOTION */
+-            const uint8_t *data = (const uint8_t *)e;
+-            int16_t value;
+-            memcpy(&value, data + 16, sizeof value);
+-            if (data[12] == 2) rgds_stick_x = value;
+-            else if (data[12] == 3) rgds_stick_y = value;
+-        }
+-    }
+-    if (ok) rgds_analog_tick();
 +static int rgds_cpad_axes[4]; /* full-resolution left and right axes */
 +int rgds_cpad_active(void) {
 +    static int enabled = -1;
@@ -19,40 +255,247 @@
 +    for (int i = 0; i < 4; ++i)
 +        out[i] = (int16_t)__atomic_load_n(&rgds_cpad_axes[i], __ATOMIC_RELAXED);
 +}
- static int rgds_real_touch;
- static uint32_t rgds_last_tick;
- static void rgds_analog_button(int down) {
-@@ -1169,7 +1182,9 @@
- }
- static void rgds_analog_setup(void) {
-     const char *v = getenv("DSFLIP_ANALOG_TOUCH");
--    rgds_analog_mode = v && !strcmp(v, "touch") ? 1 : v && !strcmp(v, "fps") ? 2 : 0;
++static int rgds_real_touch;
++static uint32_t rgds_last_tick;
++static void rgds_analog_button(int down) {
++    sdl_ev e;
++    memset(&e, 0, sizeof e);
++    e.b.type = down ? 0x401 : 0x402;
++    e.b.ts = SDL_GetTicks(); e.b.win = window ? SDL_GetWindowID(window) : 1;
++    e.b.button = 1; e.b.state = down ? 1 : 0; e.b.clicks = 1;
++    e.b.x = sty_x >= 0 ? sty_x : 128;
++    e.b.y = sty_y >= 0 ? sty_y : 96;
++    push_ev(&e);
++}
++static void rgds_analog_setup(void) {
++    const char *v = getenv("DSFLIP_ANALOG_TOUCH");
 +    rgds_analog_mode = v && !strcmp(v, "touch") ? 1 : v && !strcmp(v, "fps") ? 2 : 0;
 +    /* A real CPAD game hack owns its sticks, not the touchscreen mapper. */
 +    if (rgds_cpad_active()) rgds_analog_mode = 0;
-     v = getenv("DSFLIP_ANALOG_SENSITIVITY");
-     if (v) { int n = atoi(v); if (n >= 25 && n <= 250) rgds_analog_sensitivity = n; }
-     v = getenv("DSFLIP_ANALOG_DEADZONE");
-@@ -1387,8 +1402,10 @@
-         if (event_type == 0x600) { /* SDL_JOYAXISMOTION */
-             const uint8_t *data = (const uint8_t *)e;
-             int16_t value;
--            memcpy(&value, data + 16, sizeof value);
--            if (data[12] == 2) rgds_stick_x = value;
++    v = getenv("DSFLIP_ANALOG_SENSITIVITY");
++    if (v) { int n = atoi(v); if (n >= 25 && n <= 250) rgds_analog_sensitivity = n; }
++    v = getenv("DSFLIP_ANALOG_DEADZONE");
++    if (v) { int n = atoi(v); if (n >= 0 && n <= 60) rgds_analog_deadzone = n; }
++    if (rgds_analog_mode)
++        LOG("[rgds-analog] right stick: %s, deadzone %d%%, sensitivity %d%%\n",
++            rgds_analog_mode == 1 ? "virtual stylus" : "FPS stylus", rgds_analog_deadzone, rgds_analog_sensitivity);
++}
++static void rgds_analog_tick(void) {
++    if (rgds_analog_mode < 0) rgds_analog_setup();
++    if (!rgds_analog_mode) return;
++    uint32_t now = SDL_GetTicks();
++    uint32_t dt = rgds_last_tick ? now - rgds_last_tick : 16;
++    if (dt < 16) return;
++    rgds_last_tick = now;
++    if (dt > 40) dt = 40;
++    float x = rgds_stick_x / 32768.0f, y = rgds_stick_y / 32768.0f;
++    float mag = sqrtf(x * x + y * y), dz = rgds_analog_deadzone / 100.0f;
++    int available = !menu_touch && touch_rect_ok &&
++                    !__atomic_load_n(&rgds_real_touch, __ATOMIC_RELAXED);
++    if (!available || mag < dz + 0.001f) {
++        if (rgds_analog_down) { rgds_analog_button(0); rgds_analog_down = 0; }
++        return;
++    }
++    float scale = fminf(1.0f, (mag - dz) / (1.0f - dz)) / mag;
++    x *= scale * rgds_analog_sensitivity / 100.0f;
++    y *= scale * rgds_analog_sensitivity / 100.0f;
++    if (!rgds_analog_down) {
++        stylus_move(128, 96, 0, 1);
++        rgds_analog_button(1);
++        rgds_analog_down = 1;
++    }
++    int tx, ty;
++    if (rgds_analog_mode == 1) {
++        /* Absolute virtual thumb-stick: centre = DS touch centre. */
++        tx = (int)lroundf(128 + x * 60);
++        ty = (int)lroundf(96 + y * 60);
++    } else {
++        /* Continuous analog aim velocity for touch-driven shooters. */
++        tx = sty_x + (int)lroundf(x * dt * 0.25f);
++        ty = sty_y + (int)lroundf(y * dt * 0.25f);
++    }
++    if (tx < 0) tx = 0; if (tx > 255) tx = 255;
++    if (ty < 0) ty = 0; if (ty > 191) ty = 191;
++    stylus_move(tx, ty, 1, 0);
++}
++
++static void touch_emit_on(int panel, int down_change, int down, int x, int y, int xmax, int ymax) {
++    if (down_change && panel == (dsflip_swap && !menu_touch ? 0 : 1)) {
++        __atomic_store_n(&rgds_real_touch, down, __ATOMIC_RELAXED);
++        if (down && rgds_analog_down) { rgds_analog_button(0); rgds_analog_down = 0; }
++    }
++    int rx = x, ry = y;
++    if (touch_inv_x) x = xmax - x;      /* raw touch is already aligned with the panel on the RG DS */
++    if (touch_inv_y) y = ymax - y;
++    if (panel == 1 && menu_touch_event(down_change, down, x, y, xmax, ymax)) return;   /* the in-game menu is up (menu.c) */
++    /* the stylus is the DS's bottom screen's: the bottom panel's touch, or the top panel's while the screens are swapped
++     * (and DraStic's menu, on the bottom panel, takes none either way). A touch held across a swap is let go. */
++    static int was_on = -1;
++    int want = dsflip_swap && !menu_touch ? 0 : 1;
++    if (panel != want) {
++        if (was_on == panel && !down_change) { down_change = 1; down = 0; }   /* (ends the stylus press it started) */
++        else return;
++    }
++    if (down_change) was_on = down ? panel : -1;
++    /* the bottom panel shows exactly the bottom DS screen: panel pixels -> DS pixels is a straight rescale.
++     * DraStic's menu (also on the bottom panel) takes no touch: its input loop (r2.5.2.2, aarch64) handles only
++     * SDL key, joystick axis/hat/button events, never mouse or finger events, so taps in it go nowhere. */
++    if (!touch_rect_ok) return;
++    /* a shader may draw the DS screen into a rectangle of the panel (ds-integer: 512x384, centred): map into it.
++     * A touch that starts outside it (on the bezel) is ignored until it lifts; one that slides out is clamped. */
++    int x0 = 0, y0 = 0, w = xmax + 1, h = ymax + 1;
++    if (vp_w > 0 && vp_h > 0) {
++        int pw = P[1].mode.hdisplay ? P[1].mode.hdisplay : 640, ph = P[1].mode.vdisplay ? P[1].mode.vdisplay : 480;
++        x0 = vp_x * (xmax + 1) / pw; y0 = vp_y * (ymax + 1) / ph; w = vp_w * (xmax + 1) / pw; h = vp_h * (ymax + 1) / ph;
++    }
++    if (down_change && down) touch_outside = x < x0 || x >= x0 + w || y < y0 || y >= y0 + h;
++    if (touch_outside) { if (down_change && !down) touch_outside = 0; return; }
++    int lx = (int)((long long)(x - x0) * 256 / w);
++    int ly = (int)((long long)(y - y0) * 192 / h);
++    sdl_ev e;
++    uint32_t wid = window ? SDL_GetWindowID(window) : 1, ts = SDL_GetTicks();
++    if (lx < 0) lx = 0;
++    if (ly < 0) ly = 0;
++    if (lx > 255) lx = 255;
++    if (ly > 191) ly = 191;
++    stylus_move(lx, ly, down, down_change && down);
++    if (down_change && down) {
++        LOG("[touch] down raw %d,%d -> ds %d,%d\n", rx, ry, lx, ly);
++        if (tdump_n < touch_dumps) { tdump_y = ly; tdump_x = lx; }
++    }
++    if (down_change) {
++        memset(&e, 0, sizeof e);
++        e.b.type = down ? 0x401 : 0x402; e.b.ts = ts; e.b.win = wid; e.b.button = 1; e.b.state = down ? 1 : 0; e.b.clicks = 1;
++        e.b.x = lx; e.b.y = ly;
++        push_ev(&e);
++    }
++    st_touch++;
++}
++
++static void touch_emit(int down_change, int down, int x, int y, int xmax, int ymax) { touch_emit_on(1, down_change, down, x, y, xmax, ymax); }
++
++/* test hook: lines "x y" written to /tmp/dsflip-tap inject a tap at those bottom-PANEL pixels, through the same
++ * path as a real touch */
++static void *tap_fifo_thread(void *a) {
++    (void)a;
++    unlink("/tmp/dsflip-tap"); mkfifo("/tmp/dsflip-tap", 0600);
++    for (;;) {
++        FILE *f = fopen("/tmp/dsflip-tap", "r"); if (!f) return 0;
++        int x, y;
++        while (fscanf(f, "%d %d", &x, &y) == 2) {
++            touch_emit(1, 1, x, y, 639, 479);
++            usleep(150000);
++            touch_emit(1, 0, x, y, 639, 479);
++            LOG("[tap] injected panel %d,%d%s\n", x, y, menu_touch ? " (menu: ignored)" : "");
++        }
++        fclose(f);
++    }
++    return 0;
++}
++
++static int touch_find(const char *want, char *path, size_t n) {   /* the evdev node whose device path contains want */
++    glob_t g; *path = 0;
++    if (glob("/sys/class/input/event*", 0, 0, &g)) return -1;
++    for (size_t i = 0; i < g.gl_pathc && !*path; i++) {
++        char dev[300], real_[PATH_MAX]; snprintf(dev, sizeof dev, "%s/device", g.gl_pathv[i]);   /* (realpath wants PATH_MAX: a smaller buffer aborts under _FORTIFY_SOURCE) */
++        if (realpath(dev, real_) && strstr(real_, want)) snprintf(path, n, "/dev/input/%s", strrchr(g.gl_pathv[i], '/') + 1);
++    }
++    globfree(&g);
++    return *path ? 0 : -1;
++}
++
++/* the other touchscreen (the RG DS's top panel's): a multitouch device whose path doesn't contain `not` */
++static int touch_find_other(const char *not_, char *path, size_t n) {
++    glob_t g; *path = 0;
++    if (glob("/sys/class/input/event*", 0, 0, &g)) return -1;
++    for (size_t i = 0; i < g.gl_pathc && !*path; i++) {
++        char dev[300], real_[PATH_MAX]; snprintf(dev, sizeof dev, "%s/device", g.gl_pathv[i]);
++        if (!realpath(dev, real_) || strstr(real_, not_)) continue;
++        char node[64]; snprintf(node, sizeof node, "/dev/input/%s", strrchr(g.gl_pathv[i], '/') + 1);
++        int f = open(node, O_RDONLY | O_CLOEXEC); if (f < 0) continue;
++        unsigned long abs_[1] = { 0 };
++        if (ioctl(f, EVIOCGBIT(EV_ABS, sizeof abs_), abs_) >= 0 && (abs_[0] >> 0x35 & 1) && (abs_[0] >> 0x36 & 1)) snprintf(path, n, "%s", node);
++        close(f);
++    }
++    globfree(&g);
++    return *path ? 0 : -1;
++}
++
++/* Reads the touchscreen for the whole session. If the device goes away (a suspend/resume or a driver rebind removes
++ * and recreates it), a held stylus is released and the device is found and opened again. */
++static const char *touch_bottom;   /* the bottom panel's touchscreen's device path fragment (DSFLIP_TOUCH) */
++static void *touch_thread_on(int panel) {
++    const char *want = touch_bottom;
++    int missing_logged = 0;
++    for (;;) {
++        char path[64];
++        int tfd = (panel ? touch_find(want, path, sizeof path) : touch_find_other(want, path, sizeof path)) ? -1 : open(path, O_RDONLY | O_CLOEXEC);
++        if (tfd < 0) {
++            if (!panel) { if (!missing_logged++) LOG("[dsflip] no top touchscreen: swapped screens take no touch\n"); if (missing_logged > 20) return 0; sleep(1); continue; }
++            if (!missing_logged++) LOG("[dsflip] no touchscreen matching %s (still looking)\n", want);
++            usleep(500000); continue;
++        }
++        missing_logged = 0;
++        int ax[6] = { 0 }, ay[6] = { 0 };
++        ioctl(tfd, 0x80184540 + 0x35, ax); ioctl(tfd, 0x80184540 + 0x36, ay);   /* EVIOCGABS(ABS_MT_POSITION_X/Y) */
++        int xmax = ax[2] > 0 ? ax[2] : 639, ymax = ay[2] > 0 ? ay[2] : 479;
++        LOG("[dsflip] touch %s (%s panel) range %dx%d\n", path, panel ? "bottom" : "top", xmax + 1, ymax + 1);
++        struct { long s, us; uint16_t type, code; int32_t value; } ev[32];
++        int x = 0, y = 0, down = 0, was_down = 0;
++        ssize_t n;
++        for (;;) {
++            n = read(tfd, ev, sizeof ev);
++            if (n < 0 && errno == EINTR) continue;
++            if (n <= 0) break;
++            for (int i = 0; i < (int)(n / sizeof ev[0]); i++) {
++                if (ev[i].type == 3 && (ev[i].code == 0x35 || ev[i].code == 0)) x = ev[i].value;
++                else if (ev[i].type == 3 && (ev[i].code == 0x36 || ev[i].code == 1)) y = ev[i].value;
++                else if (ev[i].type == 1 && ev[i].code == 0x14a) down = ev[i].value != 0;   /* BTN_TOUCH */
++                else if (ev[i].type == 0 && ev[i].code == 0) {                                /* SYN_REPORT */
++                    if (down || was_down) touch_emit_on(panel, down != was_down, down, x, y, xmax, ymax);
++                    was_down = down;
++                }
++            }
++        }
++        LOG("[dsflip] touch read ended (%s): reopening\n", n < 0 ? strerror(errno) : "end of file");
++        close(tfd);
++        if (was_down) touch_emit_on(panel, 1, 0, x, y, xmax, ymax);      /* don't leave DraStic's stylus pressed */
++        usleep(200000);
++    }
++    return 0;
++}
++static void *touch_thread(void *a) { (void)a; return touch_thread_on(1); }
++static void *touch_thread_top(void *a) { (void)a; return touch_thread_on(0); }
++
++void lid_poll(void);
++int SDL_PollEvent(void *e) {
++    REAL(int, SDL_PollEvent, void *);
++    if (ok) lid_poll();                              /* the lid and HOME (lid.c) */
++    if (ok && e && resume_poll(e)) return 1;         /* a save/load state control press (resume.c) */
++    if (tq_head != tq_tail) {
++        lock(&tmu);
++        if (tq_head != tq_tail) {
++            if (tq[tq_tail].type == EV_BARRIER) { tq_tail = (tq_tail + 1) % QN; unlock(&tmu); return 0; }
++            if (e) { memcpy(e, &tq[tq_tail], sizeof tq[0]); tq_tail = (tq_tail + 1) % QN; }
++            unlock(&tmu);
++            return 1;
++        }
++        unlock(&tmu);
++    }
++    int r = real(e);
++    if (r && e && ok) {
++        uint32_t event_type;
++        memcpy(&event_type, e, sizeof event_type);
++        if (event_type == 0x600) { /* SDL_JOYAXISMOTION */
++            const uint8_t *data = (const uint8_t *)e;
++            int16_t value;
 +            memcpy(&value, data + 16, sizeof value);
 +            if (data[12] < 4)
 +                __atomic_store_n(&rgds_cpad_axes[data[12]], value, __ATOMIC_RELAXED);
 +            if (data[12] == 2) rgds_stick_x = value;
-             else if (data[12] == 3) rgds_stick_y = value;
-         }
-     }
-@@ -1392,9 +1409,16 @@
-             else if (data[12] == 3) rgds_stick_y = value;
-         }
-     }
--    if (ok) rgds_analog_tick();
--    if (r && e && ok) {
--        resume_saw_event(e);                         /* a save/load state press: CPU boost (resume.c, cpugov.c) */
++            else if (data[12] == 3) rgds_stick_y = value;
++        }
++    }
 +    if (ok) rgds_analog_tick();
 +    /* With a native Circle Pad patch, retain D-pad buttons but do not let
 +     * SDL convert the left analog axes into the DS's digital D-pad. */
@@ -61,11 +504,9 @@
 +        memcpy(&type, e, 4);
 +        if (type == 0x600 && ((const uint8_t *)e)[12] < 2) return 0;
 +    }
-+    if (r && e && ok) {
-+        resume_saw_event(e);                         /* a save/load state press: CPU boost (resume.c, cpugov.c) */
+     if (r && e && ok) {
+         resume_saw_event(e);                         /* a save/load state press: CPU boost (resume.c, cpugov.c) */
          if (pacing_lowlat) lowlat_saw_event(e);      /* DraStic's fast-forward on or off (low latency) */
-         if (menu_event(e)) return 0;                 /* the menu button: the in-game menu (menu.c), not DraStic's */
-     }
 --- a/src/ra.c
 +++ b/src/ra.c
 @@ -19,7 +19,8 @@
