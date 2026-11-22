@@ -110,6 +110,105 @@ fi
     buttons.write_text(body.replace(anchor, anchor + migrate, 1))
 print('DS shoulders: L2 -> L and R2 -> R (both emulators).')
 
+# GBA: R2 must be a game button rather than BananaOS's usual fast-forward.
+# L2 is already a game button by default; original GBA L1 and R1 stay mapped.
+gba_default = 'ra_btn_r2.gba = ff'
+gba_mirrored = 'ra_btn_r2.gba = game'
+body = cfg.read_text()
+if gba_mirrored not in body:
+    if gba_default not in body:
+        sys.exit('GBA R2 default changed upstream; inspect settings.conf.')
+    cfg.write_text(body.replace(gba_default, gba_mirrored, 1))
+
+# Existing users retain settings.conf in /data through firmware updates.
+# Update only the stock GBA fast-forward assignment; keep custom choices.
+runra = repo / 'system/rootfs/usr/libexec/banana/run-retroarch'
+body = runra.read_text()
+marker = '# RG DS GBA shoulder mirror: preserve L1/R1 and duplicate them on L2/R2'
+if marker not in body:
+    anchor = '# Settings > Other systems > Frontend (ra_frontend):'
+    change = r'''# RG DS GBA shoulder mirror: preserve L1/R1 and duplicate them on L2/R2
+if [ "$BANANA_SYSTEM" = gba ]; then
+    S=/data/banana/settings.conf
+    if [ -f "$S" ]; then
+        sed -i 's/^ *ra_btn_r2\.gba *= *ff *$/ra_btn_r2.gba = game/' "$S"
+    fi
+fi
+'''
+    if anchor not in body:
+        sys.exit('run-retroarch frontend selection moved upstream.')
+    runra.write_text(body.replace(anchor, change + anchor, 1))
+
+# For RetroArch's GBA cores, map RetroPad L2/R2 onto core L/R (10/11).
+# RetroArch's core-remap system allows two buttons to trigger the same core
+# action; preserve any user-created core or game remap. This only runs for GBA.
+body = runra.read_text()
+marker = '# RG DS GBA shoulder mirror: RetroArch core remap'
+if marker not in body:
+    anchor = 'CFG=/data/retroarch/retroarch.cfg\n'
+    change = r'''# RG DS GBA shoulder mirror: RetroArch core remap
+if [ "$BANANA_SYSTEM" = gba ]; then
+    case $c in
+        gpsp) core_name=gpSP ;;
+        mgba) core_name=mGBA ;;
+        vba_next) core_name="VBA Next" ;;
+        vbam) core_name="VBA-M" ;;
+        *) core_name= ;;
+    esac
+    if [ -n "$core_name" ]; then
+        dir="/data/retroarch/remaps/$core_name"
+        mkdir -p "$dir"
+        remap="$dir/$core_name.rmp"
+        if [ ! -e "$remap" ]; then
+            printf 'input_player1_btn_l2 = "10"\ninput_player1_btn_r2 = "11"\n' > "$remap"
+        fi
+    fi
+fi
+'''
+    if anchor not in body:
+        sys.exit('run-retroarch config path moved upstream.')
+    runra.write_text(body.replace(anchor, change + anchor, 1))
+
+# BananaFront reads evdev directly, so mirror at the libretro input boundary.
+# A narrowly scoped environment flag leaves GB/GBC and every other system alone.
+runbf = repo / 'system/rootfs/usr/libexec/banana/run-bananafront'
+body = runbf.read_text()
+marker = '# RG DS GBA shoulder mirror: BananaFront'
+if marker not in body:
+    anchor = 'ROM=$2\n'
+    change = '''# RG DS GBA shoulder mirror: BananaFront
+[ "$BANANA_SYSTEM" = gba ] && export BANANAFRONT_GBA_MIRROR=1
+'''
+    if anchor not in body:
+        sys.exit('run-bananafront ROM assignment changed upstream.')
+    runbf.write_text(body.replace(anchor, anchor + change, 1))
+
+# Buildroot's global package patch directory is set in banana_rgds_defconfig.
+# Patch only the core input mapper, after hardware buttons and hotkeys have
+# been handled, so the original physical button identity remains intact.
+patch_dir = repo / 'buildroot/patches/bananafront'
+patch_dir.mkdir(parents=True, exist_ok=True)
+patch_file = patch_dir / '0001-rgds-gba-shoulder-mirrors.patch'
+patch_text = '''--- a/src/input.c
++++ b/src/input.c
+@@ -309,6 +309,12 @@ void bf_input_poll(void)
+         b = s;
+     }
+     game_buttons[0] = hotkey_down ? 0 : b & ~job_mask;
++    // RG DS: GBA only. Either shoulder row may actuate GBA L/R.
++    if (getenv("BANANAFRONT_GBA_MIRROR")) {
++        if (game_buttons[0] & (1u << RETRO_DEVICE_ID_JOYPAD_L2))
++            game_buttons[0] |= 1u << RETRO_DEVICE_ID_JOYPAD_L;
++        if (game_buttons[0] & (1u << RETRO_DEVICE_ID_JOYPAD_R2))
++            game_buttons[0] |= 1u << RETRO_DEVICE_ID_JOYPAD_R;
++    }
+     for (int p = 1; p < NPORT; p++) game_buttons[p] = pbuttons[p];
+ }
+'''
+patch_file.write_text(patch_text)
+print('GBA shoulders: L1/L2 -> L, R1/R2 -> R in BananaFront and RetroArch.')
+
+
 print('USB storage source changes installed for original RG DS.')
 print('Build with: make rgds')
 print('Generated image: output/rgds/images/banana-rgds.img.gz')
