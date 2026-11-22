@@ -224,6 +224,7 @@ subprocess.run([sys.executable, str(Path(__file__).with_name('rgds-boot-patch.py
 subprocess.run([sys.executable, str(Path(__file__).with_name('rgds-filter-patch.py')), str(repo)], check=True)
 subprocess.run([sys.executable, str(Path(__file__).with_name('rgds-texture-patch.py')), str(repo)], check=True)
 subprocess.run([sys.executable, str(Path(__file__).with_name('rgds-system-filter-patch.py')), str(repo)], check=True)
+subprocess.run([sys.executable, str(Path(__file__).with_name('rgds-analog-patch.py')), str(repo)], check=True)
 
 
 print('USB storage source changes installed for original RG DS.')
