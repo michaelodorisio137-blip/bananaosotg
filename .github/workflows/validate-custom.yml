@@ -4,6 +4,8 @@ on:
   push:
     paths:
       - 'apply.py'
+      - 'rgds-emmc-storage-patch.py'
+      - 'install-rgds-emmc.py'
       - 'rgds-our-appstore-patch.py'
       - 'our-apps/**'
       - 'install-preserve-fat32.py'
@@ -43,7 +45,7 @@ jobs:
       - name: Obtain upstream BananaOS
         run: git clone --depth=1 https://github.com/JorreFog/BananaLinux.git upstream
       - name: Validate Python scripts
-        run: python3 -m py_compile install-preserve-fat32.py rgds-our-appstore-patch.py apply.py rgds-audio-patch.py rgds-menu-patch.py rgds-eq-patch.py rgds-boot-patch.py rgds-filter-patch.py rgds-texture-patch.py rgds-system-filter-patch.py rgds-superdrastic-3point.py rgds-analog-patch.py rgds-cpad-patch.py rgds-mgba-viewport-patch.py rgds-mgba-viewport-source.py rgds-bananafront-shoulders.py verify-preservation.py
+        run: python3 -m py_compile install-rgds-emmc.py rgds-emmc-storage-patch.py install-preserve-fat32.py rgds-our-appstore-patch.py apply.py rgds-audio-patch.py rgds-menu-patch.py rgds-eq-patch.py rgds-boot-patch.py rgds-filter-patch.py rgds-texture-patch.py rgds-system-filter-patch.py rgds-superdrastic-3point.py rgds-analog-patch.py rgds-cpad-patch.py rgds-mgba-viewport-patch.py rgds-mgba-viewport-source.py rgds-bananafront-shoulders.py verify-preservation.py
       - name: Apply all RG DS modifications
         run: |
           python3 apply.py upstream
@@ -52,6 +54,8 @@ jobs:
         run: |
           sh -n upstream/system/rootfs/usr/libexec/banana/run-our-appstore
           python3 install-preserve-fat32.py --help >/dev/null
+          python3 install-rgds-emmc.py --help >/dev/null
+          sh -n upstream/system/rootfs/etc/init.d/rcS
           sh -n upstream/system/rootfs/usr/libexec/banana/run-drastic
           sh -n upstream/system/rootfs/usr/libexec/banana/run-retroarch
           sh -n upstream/system/rootfs/usr/libexec/banana/run-bananafront
