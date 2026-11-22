@@ -16,6 +16,8 @@ on:
       - 'rgds-superdrastic-3point.py'
       - 'rgds-system-filter-patch.py'
       - 'rgds-texture-patch.py'
+      - 'rgds-analog-patch.py'
+      - 'superdrastic-analog.patch'
       - 'rgds-ds-classic.json'
       - 'verify-preservation.py'
 
@@ -48,7 +50,7 @@ jobs:
 
       - name: Validate patch scripts
         run: |
-          python3 -m py_compile apply.py rgds-audio-patch.py rgds-menu-patch.py rgds-eq-patch.py rgds-boot-patch.py rgds-filter-patch.py rgds-texture-patch.py rgds-system-filter-patch.py rgds-superdrastic-3point.py verify-preservation.py
+          python3 -m py_compile apply.py rgds-audio-patch.py rgds-menu-patch.py rgds-eq-patch.py rgds-boot-patch.py rgds-filter-patch.py rgds-texture-patch.py rgds-system-filter-patch.py rgds-superdrastic-3point.py rgds-analog-patch.py verify-preservation.py
           sh -n usb-sd2
 
       - name: Get BananaOS source
