@@ -236,3 +236,6 @@ subprocess.run([sys.executable, str(Path(__file__).with_name('rgds-mgba-viewport
 print('USB storage source changes installed for original RG DS.')
 print('Build with: make rgds')
 print('Generated image: output/rgds/images/banana-rgds.img.gz')
+
+# Separate Wi-Fi storefront for our native RG DS apps; preserves original Store.
+subprocess.run([sys.executable, str(Path(__file__).with_name("rgds-our-appstore-patch.py")), str(repo)], check=True)
