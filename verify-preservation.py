@@ -52,6 +52,13 @@ allowed_changed = {
     "buildroot/package/libretro-mgba/libretro-mgba.mk",
     "buildroot/package/rocknixds-store/rocknixds-store.mk",  # separate Our Apps catalog binary
     "system/rootfs/etc/banana/systems.conf",  # Our Apps shelf entry
+    "buildroot/board/rgds/post-build.sh",
+    "system/rootfs/etc/banana/README.txt",
+    "tools/make-logo.py",
+    "ui/assets/rnds/logo@1x.png",
+    "ui/assets/rnds/logo@1.6x.png",
+    "ui/assets/splash/word.png",
+    "ui/assets/splash/loading.png",
 }
 changed = set(git("diff", "--name-only").splitlines())
 unexpected = sorted(changed - allowed_changed)
@@ -235,6 +242,26 @@ for token in ("# RG DS internal eMMC boot: use external FAT32 card for all user 
         sys.exit("RG DS internal FAT32 storage support missing: " + token)
 if not (root / "system/rootfs/usr/libexec/banana/install-rgds-emmc.py").exists():
     sys.exit("Internal eMMC installer missing from system image")
+# Presentation-only AzeezOS rebranding, with no UI credits.
+postbuild = patched("buildroot/board/rgds/post-build.sh")
+if "NAME=AzeezOS" not in postbuild or "ID=bananaos" not in postbuild:
+    sys.exit("AzeezOS branding must preserve the bananaos machine ID")
+settings_ui = patched("ui/src/settings.cpp")
+if 'add(S, "gear", "Credits"' in settings_ui:
+    sys.exit("The user-facing Credits page was not removed")
+if 'if (!L.by.empty()) raw(lang::tr("translated by")' in settings_ui:
+    sys.exit("Translator credit visible in Language settings")
+if 'if (sl == SL_LANG)' in settings_ui and 'if (l.by.empty()) continue;' in settings_ui:
+    sys.exit("Translator credit visible in initial setup")
+if '"AzeezOS "' not in settings_ui or 'fit("AzeezOS "' not in settings_ui:
+    sys.exit("Version/About did not use AzeezOS branding")
+if "WORD, SUFFIX = \"AZEEZ\", \"OS\"" not in patched("tools/make-logo.py"):
+    sys.exit("Custom AzeezOS boot-logo generator missing")
+for asset in ("ui/assets/rnds/logo@1x.png", "ui/assets/rnds/logo@1.6x.png", "ui/assets/splash/word.png"):
+    if not (root / asset).is_file():
+        sys.exit("AzeezOS artwork missing: " + asset)
+print("PASS: AzeezOS UI without visible credits; internal licenses retained")
+
 print("PASS: Separate internal eMMC boot mode and FAT32 data-card mount")
 print("PASS: No unexpected modified BananaOS source files")
 print("PASS: All unspecified settings.conf options exactly match upstream")
