@@ -47,6 +47,7 @@ allowed_changed = {
     "ui/src/settings.cpp",              # requested renderer controls
     "ui/src/splash.cpp",                # DUNGEON O boot
     "system/rootfs/usr/libexec/banana/run-drastic",
+    "buildroot/package/bananafront/bananafront.mk",  # GBA shoulder extract hook
     "buildroot/package/superdrastic/superdrastic.mk",
     "buildroot/package/libretro-mgba/libretro-mgba.mk",
 }
@@ -54,6 +55,16 @@ changed = set(git("diff", "--name-only").splitlines())
 unexpected = sorted(changed - allowed_changed)
 if unexpected:
     sys.exit("Unexpected BananaOS source modifications: " + ", ".join(unexpected))
+
+# Verify the GBA-specific source transformation is installed before the
+# strict Buildroot package-patch phase and the obsolete patch is absent.
+bf_mk = patched("buildroot/package/bananafront/bananafront.mk")
+if "BANANAFRONT_POST_EXTRACT_HOOKS += BANANAFRONT_RGDS_GBA_SHOULDERS" not in bf_mk:
+    sys.exit("BananaFront GBA source-anchored hook missing")
+if not (root / "buildroot/package/bananafront/rgds-gba-shoulders.py").is_file():
+    sys.exit("BananaFront GBA source patcher missing")
+if (root / "buildroot/patches/bananafront/0001-rgds-gba-shoulder-mirrors.patch").exists():
+    sys.exit("Obsolete BananaFront patch still present")
 missing = sorted({
     "system/rootfs/etc/banana/settings.conf",
     "ui/src/settings_defaults.cpp",
