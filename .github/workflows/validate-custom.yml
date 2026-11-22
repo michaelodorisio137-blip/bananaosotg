@@ -6,6 +6,11 @@ on:
       - 'apply.py'
       - 'rgds-audio-patch.py'
       - 'rgds-menu-patch.py'
+      - 'rgds-eq-patch.py'
+      - 'verify-preservation.py'
+      - 'rgds-boot-patch.py'
+      - 'rgds-filter-patch.py'
+      - 'rgds-texfilter-patch.py'
       - 'rgds-ds-classic.json'
       - 'usb-sd2'
       - '.github/workflows/validate-custom.yml'
@@ -21,9 +26,11 @@ jobs:
       - name: Obtain upstream BananaOS
         run: git clone --depth=1 https://github.com/JorreFog/BananaLinux.git upstream
       - name: Validate Python scripts
-        run: python3 -m py_compile apply.py rgds-audio-patch.py rgds-menu-patch.py
+        run: python3 -m py_compile apply.py rgds-audio-patch.py rgds-menu-patch.py rgds-eq-patch.py rgds-boot-patch.py rgds-filter-patch.py rgds-texfilter-patch.py verify-preservation.py
       - name: Apply all RG DS modifications
-        run: python3 apply.py upstream
+        run: |
+          python3 apply.py upstream
+          python3 verify-preservation.py upstream
       - name: Check JSON menu document
         run: python3 -c 'import json; json.load(open("rgds-ds-classic.json"))'
       - name: Install host compilation dependencies
@@ -38,7 +45,7 @@ jobs:
             upstream/ui/src/sound.cpp
       - name: Syntax-check menu and screenshot support
         run: |
-          for f in layout.cpp library.cpp main.cpp; do
+          for f in layout.cpp library.cpp main.cpp splash.cpp settings.cpp; do
             g++ -std=c++17 -Wall -fsyntax-only \
               -Iupstream/ui/src -Iupstream/ui -Iupstream/ui/rnds \
               $(pkg-config --cflags freetype2 libdrm zlib) \
