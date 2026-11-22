@@ -27,7 +27,7 @@ define LIBRETRO_MGBA_RGDS_EXPANDED
 \ttest -s "$$orig"; \\
 \tcp "$$orig" $(@D)/mgba_original_libretro.so; \\
 \tpython3 $(BR2_EXTERNAL_BANANA_PATH)/package/libretro-mgba/rgds-mgba-viewport-source.py $(@D); \\
-\t$(HOST_DIR)/bin/cmake --build $(@D)/buildroot-build --parallel $(PARALLEL_JOBS); \\
+\tcmake --build $(@D)/buildroot-build --parallel $(PARALLEL_JOBS); \\
 \ttest -s "$$orig"; \\
 \tcp "$$orig" $(@D)/mgba_expanded_libretro.so
 endef
