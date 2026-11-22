@@ -1,0 +1,64 @@
+name: Build AzeezOS GB GBC SD-card viewport installer
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/build-gb-gbc-sd-installer.yml'
+      - 'rgds-mgba-viewport-source.py'
+      - 'gb-gbc-port/**'
+
+permissions:
+  contents: read
+
+jobs:
+  core:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install AArch64 cross compiler
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq gcc-aarch64-linux-gnu g++-aarch64-linux-gnu ninja-build cmake zip
+      - name: Fetch pinned mGBA source
+        run: |
+          git init -q mgba
+          git -C mgba remote add origin https://github.com/libretro/mgba.git
+          git -C mgba fetch -q --depth 1 origin 7a12d6d4b9acb14c0ae62c9166b6a2f3d08007f6
+          git -C mgba checkout -q FETCH_HEAD
+      - name: Apply viewport renderer patch
+        run: |
+          python3 rgds-mgba-viewport-source.py mgba
+          grep -q 'rgdsGBRenderBorder' mgba/src/platform/libretro/libretro.c
+          git -C mgba diff --check
+      - name: Build AArch64 libretro core
+        run: |
+          cmake -S mgba -B arm-build -G Ninja \
+            -DCMAKE_SYSTEM_NAME=Linux \
+            -DCMAKE_SYSTEM_PROCESSOR=aarch64 \
+            -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc \
+            -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++ \
+            -DLIBMGBA_ONLY=ON -DBUILD_LIBRETRO=ON -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_QT=OFF -DUSE_PNG=OFF -DUSE_ZLIB=OFF -DUSE_LZMA=OFF
+          cmake --build arm-build --parallel 4
+          find arm-build -type f -name mgba_libretro.so -size +100k -print | tee /tmp/arm-cores
+          test -s /tmp/arm-cores
+          file "$(head -n 1 /tmp/arm-cores)" | tee /tmp/architecture
+          grep -qi 'ARM aarch64' /tmp/architecture
+          aarch64-linux-gnu-readelf -h "$(head -n 1 /tmp/arm-cores)" | grep -q 'AArch64'
+      - name: Package simple RG DS SD installer
+        run: |
+          mkdir -p dist/roms/ports/AzeezGBViewport
+          cp "$(head -n 1 /tmp/arm-cores)" dist/roms/ports/AzeezGBViewport/mgba_expanded_libretro.so
+          cp gb-gbc-port/Enable-GB-GBC-Expanded.sh dist/roms/ports/
+          cp gb-gbc-port/Restore-GB-GBC-Gambatte.sh dist/roms/ports/
+          echo 'Extract roms/ into the ROOT of your RG DS data SD card. Open Ports > Enable-GB-GBC-Expanded. It installs mGBA Expanded to /data/retroarch/cores and selects it for GB/GBC. GBA is unchanged. Open Ports > Restore-GB-GBC-Gambatte to reverse. The full firmware build is needed for the new Emulator selector entries to appear.' > dist/README.txt
+          (cd dist && zip -qr ../AzeezOS-GB-GBC-Viewport-SD-Installer.zip roms README.txt)
+          ls -lah AzeezOS-GB-GBC-Viewport-SD-Installer.zip
+      - name: Upload installable AArch64 package
+        uses: actions/upload-artifact@v4
+        with:
+          name: AzeezOS-GB-GBC-Viewport-SD-Installer
+          path: AzeezOS-GB-GBC-Viewport-SD-Installer.zip
+          retention-days: 21
