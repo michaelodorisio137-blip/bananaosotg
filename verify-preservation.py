@@ -50,6 +50,8 @@ allowed_changed = {
     "buildroot/package/bananafront/bananafront.mk",  # GBA shoulder extract hook
     "buildroot/package/superdrastic/superdrastic.mk",
     "buildroot/package/libretro-mgba/libretro-mgba.mk",
+    "buildroot/package/rocknixds-store/rocknixds-store.mk",  # separate Our Apps catalog binary
+    "system/rootfs/etc/banana/systems.conf",  # Our Apps shelf entry
 }
 changed = set(git("diff", "--name-only").splitlines())
 unexpected = sorted(changed - allowed_changed)
@@ -204,6 +206,25 @@ for path, tokens in {
     for token in tokens:
         if token not in source:
             sys.exit("Preserved feature missing from " + path + ": " + token)
+
+
+# A separate Our Apps tile must not change the existing Store or emulator entries.
+catalogue = patched("system/rootfs/etc/banana/systems.conf")
+if catalogue != upstream("system/rootfs/etc/banana/systems.conf").replace(
+    "# the apps installed from the Store (shown once one is)",
+    "# Our Apps: separate catalog for RG DS custom apps and accessories.\n"
+    "[ourappstore]\nname = Our Apps\nmaker = RG DS custom\n"
+    "folder = /usr/share/banana/apps/ourstore\next = app\n"
+    "run = /usr/libexec/banana/run-our-appstore %ROM%\n"
+    "perf = balanced\n\n"
+    "# the apps installed from the Store (shown once one is)", 1):
+    sys.exit("Our Apps systems.conf changes are not restricted to one separate system")
+for asset in ("system/rootfs/usr/libexec/banana/run-our-appstore",
+              "system/rootfs/usr/share/banana/apps/ourstore/OurApps.app",
+              "system/rootfs/usr/share/banana/apps/ourstore/gamelist.xml",
+              "store/our-apps/catalog.json"):
+    if not (root / asset).is_file():
+        sys.exit("Our Apps resource missing: " + asset)
 
 print("PASS: No unexpected modified BananaOS source files")
 print("PASS: All unspecified settings.conf options exactly match upstream")
