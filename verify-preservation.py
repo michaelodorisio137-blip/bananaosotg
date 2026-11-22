@@ -38,6 +38,10 @@ allowed_changed = {
     "system/rootfs/usr/libexec/banana/run-bananafront",
     "ui/src/main.cpp",      # optional startup-audio playback
     "ui/src/sound.cpp",     # optional menu-music mixer
+    "ui/src/layout.cpp",    # explicit DS-style clock, calendar and preview hooks
+    "ui/src/library.cpp",   # game screenshot preview metadata
+    "ui/src/library.h",
+    "ui/rnds/RndsUI.h",
 }
 changed = set(git("diff", "--name-only").splitlines())
 unexpected = sorted(changed - allowed_changed)
@@ -58,6 +62,7 @@ for before, after in (
     ("nds_btn_l2 = swap", "nds_btn_l2 = l"),
     ("nds_btn_r2 = ff", "nds_btn_r2 = r"),
     ("ra_btn_r2.gba = ff", "ra_btn_r2.gba = game"),
+    ("theme = dark", "theme = user:rgds-ds-classic"),
 ):
     if expected.count(before + "\n") != 1:
         sys.exit("Upstream settings template changed around " + before)
@@ -69,6 +74,8 @@ if patched(template) != expected:
 defaults = "ui/src/settings_defaults.cpp"
 expected = upstream(defaults)
 for before, after in (
+    ('{ "theme", "dark", TEXT, nullptr, 0, 0 }',
+     '{ "theme", "user:rgds-ds-classic", TEXT, nullptr, 0, 0 }'),
     ('{ "nds_btn_l2", "swap", ENUM, NDS_BTN, 0, 0, true },',
      '{ "nds_btn_l2", "l", ENUM, NDS_BTN, 0, 0, true },'),
     ('{ "nds_btn_r2", "ff", ENUM, NDS_BTN, 0, 0, true },',
@@ -79,6 +86,22 @@ for before, after in (
     expected = expected.replace(before, after, 1)
 if patched(defaults) != expected:
     sys.exit("settings_defaults.cpp has unrelated edits; refusing firmware build")
+
+# Confirm the new features are additive assets. The original RG DS was not
+# shipped with a board-specific tuned profile; the Plus's measured profile
+# must remain identical to its upstream content.
+eq = root / "ui/assets/speaker-eq/rgds.txt"
+if not eq.is_file():
+    sys.exit("Original RG DS speaker EQ preset missing")
+eq_text = eq.read_text()
+for token in ("Preamp: -4.0 dB", "Filter 1: ON HPQ Fc 145 Hz", "Filter 7: ON PK Fc 8000 Hz"):
+    if token not in eq_text:
+        sys.exit("Original RG DS speaker EQ preset corrupted: " + token)
+plus = "ui/assets/speaker-eq/rgds-plus.txt"
+if patched(plus) != upstream(plus):
+    sys.exit("Existing measured RG DS Plus speaker EQ changed")
+if not (root / "system/rootfs/usr/share/banana/themes/rgds-ds-classic.json").is_file():
+    sys.exit("DS-style menu theme missing")
 
 # This protects important existing features from accidental removal in source.
 for path, tokens in {
