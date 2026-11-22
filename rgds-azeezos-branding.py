@@ -44,6 +44,37 @@ for old, new in [
     ('"For working on Banana itself:', '"For working on AzeezOS itself:'),
 ]:
     s = s.replace(old, new)
+
+# Keep credits and legal attributions in the firmware's own files, not in the UI.
+# The About panel stays for version and diagnostics.
+row = '\\t\\tif (!readCredits().empty())\\n'
+at = s.find(row)
+if at < 0:
+    raise SystemExit("Credits menu row moved upstream")
+end = s.find('Item::PAGE);', at)
+if end < 0:
+    raise SystemExit("Credits menu row is incomplete")
+s = s[:at] + s[end + len('Item::PAGE);') + 1:]
+s = s.replace('"About", "Credits", "First-time setup"', '"About", "First-time setup"')
+s = s.replace('\\t\\t\\tif (it.key == "credits") { openCredits(); return MOVED; }\\n', '')
+
+# Translator credits are technical metadata, not navigation or settings.
+at = s.find('\\t\\t\\t\\tif (!l.by.empty())\\n')
+if at < 0:
+    raise SystemExit("Language help attribution moved upstream")
+end = s.find('\\n\\t\\t\\t\\t}\\n', at)
+if end < 0:
+    raise SystemExit("Language help attribution closing brace missing")
+s = s[:at] + s[end + len('\\n\\t\\t\\t\\t}\\n'):]
+s = s.replace('\\t\\tif (!L.by.empty()) raw(lang::tr("translated by") + " " + L.by, false, 20, 50, 210, p.ink);\\n', '')
+at = s.find('\\t\\t\\telse if (sl == SL_LANG)\\n\\t\\t\\t{')
+if at < 0:
+    raise SystemExit("Language setup attribution moved upstream")
+end = s.find('\\n\\t\\t\\t}\\n', at)
+if end < 0:
+    raise SystemExit("Language setup attribution closing brace missing")
+s = s[:at] + s[end + len('\\n\\t\\t\\t}\\n'):]
+
 settings_path.write_text(s)
 
 main_path = root / "ui/src/main.cpp"
@@ -74,5 +105,5 @@ subprocess.run([sys.executable, str(logo_script), str(font), str(bananas), str(o
 for p in (out / "logo@1x.png", out / "logo@1.6x.png", splash / "word.png"):
     if not p.is_file() or p.stat().st_size < 70:
         raise SystemExit("AzeezOS visual asset missing: " + str(p))
-print("AzeezOS: boot wordmark, menu logo, About/Credits, update descriptions and OS name updated.")
+print("AzeezOS: boot wordmark, menu logo, About, no Credits, update descriptions and OS name updated.")
 print("Preserved: ID=bananaos, /data/banana paths, banana-root partitions, internal updater formats.")
