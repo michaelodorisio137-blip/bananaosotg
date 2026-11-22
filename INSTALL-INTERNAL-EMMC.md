@@ -1,27 +1,27 @@
-# Original RG DS: BananaOS on internal 32 GB eMMC
+# Original RG DS: AzeezOS on internal 32 GB eMMC
 
 **Status: experimental. Source-level validation passed; an actual internal boot has NOT been verified on hardware.**
 
-Goal: use internal eMMC for the BananaOS bootloader and OS, the existing **1 TB FAT32 microSD** for /data (games, saves, app installs and settings), and USB OTG for additional storage/accessories.
+Goal: use internal eMMC for the AzeezOS bootloader and OS, the existing **1 TB FAT32 microSD** for /data (games, saves, app installs and settings), and USB OTG for additional storage/accessories.
 
 ## Important
 
 **The internal installation REPLACES Android and all its eMMC data.** Back up any Android data you want to keep, and obtain the manufacturer's stock recovery resources. This is an intentional OS replacement, not Android dual boot. Do not use the image on an RG DS Plus or any other device.
 
-**Never flash the 1 TB card.** It can remain exactly as it is, with a single FAT32 partition. BananaOS will create its expected folders on it if needed.
+**Never flash the 1 TB card.** It can remain exactly as it is, with a single FAT32 partition. AzeezOS will create its expected folders on it if needed.
 
 ## Phase A: temporary SD boot
 
-1. Download the **BananaOS-RGDS-eMMC-OurApps-USB-OTG** artifact from the successful build on the `rgds-emmc-boot` branch. Extract the GitHub artifact ZIP.
+1. Download the **AzeezOS-RGDS-eMMC-OurApps-USB-OTG** artifact from the successful build on the `rgds-emmc-boot` branch. Extract the GitHub artifact ZIP.
 2. Use a **separate, temporary microSD** (4 GB or larger) and flash `banana-rgds.img.gz` to that card using an ordinary image-flashing tool. This temporary card will be erased.
 3. Boot the original RG DS from the temporary card. Test input, Wi-Fi and basic functions first. The eMMC has not been touched.
 4. Copy `banana-rgds-emmc.img.gz` (from the same artifact) onto the temporary card, e.g. into `banana/downloads/`. Keep at least 1 GiB free for temporary decompression.
-5. Enable BananaOS's built-in **SSH** in Settings > Network. SSH requires a user-supplied public key in `banana/ssh/authorized_keys` on the temporary card (it does not accept passwords). The user can copy that file over the existing SMB file-sharing feature or an SD reader.
+5. Enable AzeezOS's built-in **SSH** in Settings > Network. SSH requires a user-supplied public key in `banana/ssh/authorized_keys` on the temporary card (it does not accept passwords). The user can copy that file over the existing SMB file-sharing feature or an SD reader.
 6. From a trusted computer on the same LAN, SSH into the RG DS as root using your matching private key. The default firmware includes the installer at `/usr/libexec/banana/install-rgds-emmc.py`.
 
 ## Phase B: dry-run then deliberate internal install
 
-On the temporary BananaOS installation, run:
+On the temporary AzeezOS installation, run:
 
 ```sh
 python3 /usr/libexec/banana/install-rgds-emmc.py \
@@ -43,7 +43,7 @@ The installer requires the exact typed phrase `ERASE ANDROID INSTALL BANANAOS`, 
 
 Shut down, remove the temporary boot microSD, insert your existing **1 TB FAT32 card**, then power up. The eMMC system looks for the SD's first FAT32 partition and mounts it at `/data` before initializing library folders. No SD formatting or partitioning is intended.
 
-If it fails to boot, do **not** format your 1 TB card. Reinsert the temporary BananaOS card and use recovery diagnostics. If the U-Boot ROM selection or eMMC recovery flow fails, a hardware-specific recovery procedure may be necessary; this workflow cannot guarantee a working eMMC boot without testing on the console.
+If it fails to boot, do **not** format your 1 TB card. Reinsert the temporary AzeezOS card and use recovery diagnostics. If the U-Boot ROM selection or eMMC recovery flow fails, a hardware-specific recovery procedure may be necessary; this workflow cannot guarantee a working eMMC boot without testing on the console.
 
 ## USB and Our Apps
 
