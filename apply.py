@@ -65,6 +65,61 @@ if marker not in body:
         sys.exit('fileops.cpp has changed upstream; cannot safely locate the second card label.')
     fileops.write_text(body.replace(old, new, 1))
 
+
+# RG DS shoulder mirroring: L2 duplicates L1, R2 duplicates R1 in both DS emulators.
+# Keep all other layouts and button settings intact.
+cfg = repo / 'system/rootfs/etc/banana/settings.conf'
+defs = repo / 'ui/src/settings_defaults.cpp'
+buttons = repo / 'system/rootfs/usr/libexec/banana/nds-buttons'
+for f in (cfg, defs, buttons):
+    if not f.is_file():
+        sys.exit(f'Missing BananaOS source file for DS button patch: {f}')
+mirror_changes = [
+    (cfg, 'nds_btn_l2 = swap', 'nds_btn_l2 = l'),
+    (cfg, 'nds_btn_r2 = ff', 'nds_btn_r2 = r'),
+    (defs, '{ "nds_btn_l2", "swap", ENUM, NDS_BTN, 0, 0, true },',
+           '{ "nds_btn_l2", "l", ENUM, NDS_BTN, 0, 0, true },'),
+    (defs, '{ "nds_btn_r2", "ff", ENUM, NDS_BTN, 0, 0, true },',
+           '{ "nds_btn_r2", "r", ENUM, NDS_BTN, 0, 0, true },'),
+    (buttons, 'case $1 in l2) echo swap ;; r2) echo ff ;; l3) echo blow ;; *) echo none ;; esac',
+              'case $1 in l2) echo l ;; r2) echo r ;; l3) echo blow ;; *) echo none ;; esac'),
+]
+for f, before, after in mirror_changes:
+    body = f.read_text()
+    if after not in body:
+        if before not in body:
+            sys.exit(f'DS shoulder mapping has changed upstream; check {f}')
+        f.write_text(body.replace(before, after, 1))
+
+# A user's /data/banana/settings.conf survives firmware upgrades. Convert stock
+# swap/fast-forward assignments only once, at the next DS launch. Do not alter
+# any custom mappings or change behavior on subsequent launches.
+body = buttons.read_text()
+marker = '# RG DS shoulder mirrors: first-run migration of stock SD-card settings'
+if marker not in body:
+    anchor = "S=$" + "{NDS_BUTTONS_SETTINGS:-/data/banana/settings.conf}   # (the variable: tests)\n"
+    migrate = r'''# RG DS shoulder mirrors: first-run migration of stock SD-card settings
+if [ "$S" = /data/banana/settings.conf ] && [ -f "$S" ] && [ ! -e /data/banana/.rgds-shoulder-mirror-v1 ]; then
+    if grep -Eq '^ *nds_btn_l2 *= *swap *
+print('Build with: make rgds')
+print('Generated image: output/rgds/images/banana-rgds.img.gz')
+ "$S" &&
+       grep -Eq '^ *nds_btn_r2 *= *ff *
+print('Build with: make rgds')
+print('Generated image: output/rgds/images/banana-rgds.img.gz')
+ "$S"; then
+        sed -i -e 's/^ *nds_btn_l2 *= *swap *$/nds_btn_l2 = l/' \
+               -e 's/^ *nds_btn_r2 *= *ff *$/nds_btn_r2 = r/' "$S"
+    fi
+    : > /data/banana/.rgds-shoulder-mirror-v1
+fi
+'''
+    if anchor not in body:
+        sys.exit('nds-buttons startup has changed upstream; cannot install shoulder migration.')
+    buttons.write_text(body.replace(anchor, anchor + migrate, 1))
+
+print('DS shoulder mirroring enabled: L2 -> L, R2 -> R (both emulators).')
+
 print('USB storage source changes installed for original RG DS.')
 print('Build with: make rgds')
 print('Generated image: output/rgds/images/banana-rgds.img.gz')
