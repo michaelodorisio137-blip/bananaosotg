@@ -10,6 +10,9 @@ on:
       - 'rgds-audio-patch.py'
       - 'rgds-menu-patch.py'
       - 'rgds-eq-patch.py'
+      - 'rgds-boot-patch.py'
+      - 'rgds-filter-patch.py'
+      - 'rgds-texfilter-patch.py'
       - 'rgds-ds-classic.json'
       - 'verify-preservation.py'
 
@@ -38,7 +41,7 @@ jobs:
 
       - name: Validate patch scripts
         run: |
-          python3 -m py_compile apply.py rgds-audio-patch.py rgds-menu-patch.py rgds-eq-patch.py verify-preservation.py
+          python3 -m py_compile apply.py rgds-audio-patch.py rgds-menu-patch.py rgds-eq-patch.py rgds-boot-patch.py rgds-filter-patch.py rgds-texfilter-patch.py verify-preservation.py
           sh -n usb-sd2
 
       - name: Get BananaOS source
