@@ -1,0 +1,52 @@
+name: Test GB GBC expanded mGBA renderer
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'rgds-mgba-viewport-source.py'
+      - 'rgds-mgba-viewport-patch.py'
+      - '.github/workflows/test-gb-gbc-viewport.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  compile-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch pinned libretro mGBA
+        run: |
+          git init -q mgba
+          git -C mgba remote add origin https://github.com/libretro/mgba.git
+          git -C mgba fetch -q --depth 1 origin 7a12d6d4b9acb14c0ae62c9166b6a2f3d08007f6
+          git -C mgba checkout -q FETCH_HEAD
+      - name: Apply the same renderer changes as full firmware
+        run: |
+          python3 -m py_compile rgds-mgba-viewport-source.py
+          python3 rgds-mgba-viewport-source.py mgba
+          grep -q 'RGDS_GB_EXT_W 320' mgba/src/platform/libretro/libretro.c
+          grep -q 'RGDS_GB_EXT_H 204' mgba/src/platform/libretro/libretro.c
+          grep -q 'rgdsGBRenderBorder' mgba/src/platform/libretro/libretro.c
+          grep -q 'GB_VIDEO_HORIZONTAL_PIXELS = 160' mgba/include/mgba/internal/gb/video.h
+          grep -q 'GB_VIDEO_VERTICAL_PIXELS = 144' mgba/include/mgba/internal/gb/video.h
+          git -C mgba diff --check
+      - name: Install mGBA build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq cmake ninja-build libpng-dev zlib1g-dev
+      - name: Compile patched libretro core
+        run: |
+          cmake -S mgba -B core-build -G Ninja -DLIBMGBA_ONLY=ON -DBUILD_LIBRETRO=ON -DCMAKE_BUILD_TYPE=Release -DBUILD_QT=OFF
+          cmake --build core-build --parallel 4
+          find core-build -type f -name 'mgba_libretro.so' -size +100k -print | tee /tmp/cores
+          test -s /tmp/cores
+      - name: Confirm exported libretro API
+        run: |
+          SO=$(head -n 1 /tmp/cores)
+          file "$SO"
+          nm -D "$SO" | grep -q 'retro_run'
+          nm -D "$SO" | grep -q 'retro_get_system_av_info'
+          echo "Source/host compilation passed. This binary is NOT a RG DS installable artifact."
