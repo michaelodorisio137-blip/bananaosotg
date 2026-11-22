@@ -106,7 +106,7 @@ blend = r'''            // Add two-channel music under normal menu effects witho
             // selections, scroll sounds or the cartridge-click cue.
             if (musicStage >= 0 && pcm && frames > 0 && openRate == 48000 && openCh == 2)
             {
-                musicMix.resize((size_t)frames * 2);
+                musicMix.assign(p, p + (size_t)frames * 2);
                 for (size_t f = 0; f < (size_t)frames; f++)
                 {
                     const Clip* a = musicClip(musicStage);
@@ -132,12 +132,6 @@ blend = r'''            // Add two-channel music under normal menu effects witho
                         musicStage = next;
                         musicPos = next >= 0 ? fade : 0; // overlap already consumed
                     }
-                }
-                if (musicStage < 0)
-                {
-                    // Last clip ended. Complete this audio block with silence.
-                    for (size_t i = 0; i < musicMix.size(); i++)
-                        if (musicMix[i] == 0) musicMix[i] = p[i];
                 }
                 p = musicMix.data();
             }
