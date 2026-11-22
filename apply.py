@@ -191,7 +191,7 @@ patch_dir.mkdir(parents=True, exist_ok=True)
 patch_file = patch_dir / '0001-rgds-gba-shoulder-mirrors.patch'
 patch_text = '''--- a/src/input.c
 +++ b/src/input.c
-@@ -309,6 +309,12 @@ void bf_input_poll(void)
+@@ -309,5 +309,12 @@ void bf_input_poll(void)
          b = s;
      }
      game_buttons[0] = hotkey_down ? 0 : b & ~job_mask;
