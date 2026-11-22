@@ -1,0 +1,110 @@
+--- a/src/dsflip.c
++++ b/src/dsflip.c
+@@ -1149,8 +1149,80 @@
+     push_ev(&e); sty_x = tx; sty_y = ty;
+ }
+ 
+-static void touch_emit_on(int panel, int down_change, int down, int x, int y, int xmax, int ymax) {
+-    int rx = x, ry = y;
++/* RG DS analog touchscreen bridge: unlike screen filtering this handles actual axes.
++ * DSFLIP_ANALOG_TOUCH=off|touch|fps. This is stylus emulation; CPAD
++ * Action Replay patches require a separate guest-memory analog bridge.
++ * SDL joystick axes 2/3 are the original RG DS's right stick. */
++static int rgds_analog_mode = -1, rgds_analog_sensitivity = 100, rgds_analog_deadzone = 20;
++static int rgds_stick_x, rgds_stick_y, rgds_analog_down;
++static int rgds_real_touch;
++static uint32_t rgds_last_tick;
++static void rgds_analog_button(int down) {
++    sdl_ev e;
++    memset(&e, 0, sizeof e);
++    e.b.type = down ? 0x401 : 0x402;
++    e.b.ts = SDL_GetTicks(); e.b.win = window ? SDL_GetWindowID(window) : 1;
++    e.b.button = 1; e.b.state = down ? 1 : 0; e.b.clicks = 1;
++    e.b.x = sty_x >= 0 ? sty_x : 128;
++    e.b.y = sty_y >= 0 ? sty_y : 96;
++    push_ev(&e);
++}
++static void rgds_analog_setup(void) {
++    const char *v = getenv("DSFLIP_ANALOG_TOUCH");
++    rgds_analog_mode = v && !strcmp(v, "touch") ? 1 : v && !strcmp(v, "fps") ? 2 : 0;
++    v = getenv("DSFLIP_ANALOG_SENSITIVITY");
++    if (v) { int n = atoi(v); if (n >= 25 && n <= 250) rgds_analog_sensitivity = n; }
++    v = getenv("DSFLIP_ANALOG_DEADZONE");
++    if (v) { int n = atoi(v); if (n >= 0 && n <= 60) rgds_analog_deadzone = n; }
++    if (rgds_analog_mode)
++        LOG("[rgds-analog] right stick: %s, deadzone %d%%, sensitivity %d%%\n",
++            rgds_analog_mode == 1 ? "virtual stylus" : "FPS stylus", rgds_analog_deadzone, rgds_analog_sensitivity);
++}
++static void rgds_analog_tick(void) {
++    if (rgds_analog_mode < 0) rgds_analog_setup();
++    if (!rgds_analog_mode) return;
++    uint32_t now = SDL_GetTicks();
++    uint32_t dt = rgds_last_tick ? now - rgds_last_tick : 16;
++    if (dt < 16) return;
++    rgds_last_tick = now;
++    if (dt > 40) dt = 40;
++    float x = rgds_stick_x / 32768.0f, y = rgds_stick_y / 32768.0f;
++    float mag = sqrtf(x * x + y * y), dz = rgds_analog_deadzone / 100.0f;
++    int available = !menu_touch && touch_rect_ok &&
++                    !__atomic_load_n(&rgds_real_touch, __ATOMIC_RELAXED);
++    if (!available || mag < dz + 0.001f) {
++        if (rgds_analog_down) { rgds_analog_button(0); rgds_analog_down = 0; }
++        return;
++    }
++    float scale = fminf(1.0f, (mag - dz) / (1.0f - dz)) / mag;
++    x *= scale * rgds_analog_sensitivity / 100.0f;
++    y *= scale * rgds_analog_sensitivity / 100.0f;
++    if (!rgds_analog_down) {
++        stylus_move(128, 96, 0, 1);
++        rgds_analog_button(1);
++        rgds_analog_down = 1;
++    }
++    int tx, ty;
++    if (rgds_analog_mode == 1) {
++        /* Absolute virtual thumb-stick: centre = DS touch centre. */
++        tx = (int)lroundf(128 + x * 60);
++        ty = (int)lroundf(96 + y * 60);
++    } else {
++        /* Continuous analog aim velocity for touch-driven shooters. */
++        tx = sty_x + (int)lroundf(x * dt * 0.25f);
++        ty = sty_y + (int)lroundf(y * dt * 0.25f);
++    }
++    if (tx < 0) tx = 0; if (tx > 255) tx = 255;
++    if (ty < 0) ty = 0; if (ty > 191) ty = 191;
++    stylus_move(tx, ty, 1, 0);
++}
++
++static void touch_emit_on(int panel, int down_change, int down, int x, int y, int xmax, int ymax) {
++    if (down_change && panel == (dsflip_swap && !menu_touch ? 0 : 1)) {
++        __atomic_store_n(&rgds_real_touch, down, __ATOMIC_RELAXED);
++        if (down && rgds_analog_down) { rgds_analog_button(0); rgds_analog_down = 0; }
++    }
++    int rx = x, ry = y;
+     if (touch_inv_x) x = xmax - x;      /* raw touch is already aligned with the panel on the RG DS */
+     if (touch_inv_y) y = ymax - y;
+     if (panel == 1 && menu_touch_event(down_change, down, x, y, xmax, ymax)) return;   /* the in-game menu is up (menu.c) */
+@@ -1308,9 +1380,21 @@
+         }
+         unlock(&tmu);
+     }
+-    int r = real(e);
+-    if (r && e && ok) {
+-        resume_saw_event(e);
++    int r = real(e);
++    if (r && e && ok) {
++        uint32_t event_type;
++        memcpy(&event_type, e, sizeof event_type);
++        if (event_type == 0x600) { /* SDL_JOYAXISMOTION */
++            const uint8_t *data = (const uint8_t *)e;
++            int16_t value;
++            memcpy(&value, data + 16, sizeof value);
++            if (data[12] == 2) rgds_stick_x = value;
++            else if (data[12] == 3) rgds_stick_y = value;
++        }
++    }
++    if (ok) rgds_analog_tick();
++    if (r && e && ok) {
++        resume_saw_event(e);
+         if (pacing_lowlat) lowlat_saw_event(e);      /* DraStic's fast-forward on or off (low latency) */
+         if (menu_event(e)) return 0;                 /* the menu button: the in-game menu (menu.c), not DraStic's */
+     }
