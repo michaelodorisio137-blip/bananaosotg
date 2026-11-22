@@ -79,6 +79,9 @@ sub(asm,
     "#define KSR(P, T) { { &P##s##T##00, &P##s##T##01 }, { &P##s##T##10, &P##s##T##11 } }",
     "#define KSR(P, T) { { &P##s##T##00, &P##s##T##01, &P##s##T##02 }, { &P##s##T##10, &P##s##T##11, &P##s##T##12 } }")
 sub(asm,
+    '{ { { &P##s000, &P##s000 }, { &P##s010, &P##s010 } }, KSR(P, 1)',
+    '{ { { &P##s000, &P##s000, &P##s000 }, { &P##s010, &P##s010, &P##s010 } }, KSR(P, 1)')
+sub(asm,
     "kern_fn *const kernels[3][5][2][2][2];",
     "kern_fn *const kernels[3][5][2][2][3];")
 sub(asm,
