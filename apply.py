@@ -242,3 +242,6 @@ subprocess.run([sys.executable, str(Path(__file__).with_name("rgds-our-appstore-
 
 # Opt-in internal eMMC layout (only activated when Linux root is eMMC).
 subprocess.run([sys.executable, str(Path(__file__).with_name("rgds-emmc-storage-patch.py")), str(repo)], check=True)
+
+# AzeezOS presentation identity, leaving BananaOS internal interfaces compatible.
+subprocess.run([sys.executable, str(Path(__file__).with_name("rgds-azeezos-branding.py")), str(repo)], check=True)
