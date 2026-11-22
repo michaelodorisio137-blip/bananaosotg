@@ -17,7 +17,7 @@ dest=root/"buildroot/patches/superdrastic/0002-rgds-right-analog-stylus.patch"
 dest.parent.mkdir(parents=True, exist_ok=True)
 shutil.copyfile(patch,dest)
 body=s.read_text()
-anchor='''\t\t\tadd(SD, "nds", "3D resolution", "How sharp DS games' 3D is drawn.", dcfg, "hires_3d", { "1x", "2x" }, { "0", "1" });'''
+anchor='''add(SD, "nds", "3D resolution", "How sharp DS games' 3D is drawn.", dcfg, "hires_3d", { "1x", "2x" }, { "0", "1" });'''
 addition='''            add(SD, "nds", "Right-stick touch",
                 "Use the RG DS's analog right stick as the DS stylus. Real touchscreen always takes priority.",
                 sd, "DSFLIP_ANALOG_TOUCH", { "Off", "Virtual touch stick", "FPS touch aim" },
