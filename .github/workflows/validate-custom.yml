@@ -1,10 +1,11 @@
-name: Validate RG DS custom patches
+name: Validate AzeezOS RG DS custom patches
 
 on:
   push:
     paths:
       - 'apply.py'
       - 'rgds-emmc-storage-patch.py'
+      - 'rgds-azeezos-branding.py'
       - 'install-rgds-emmc.py'
       - 'rgds-our-appstore-patch.py'
       - 'our-apps/**'
@@ -44,8 +45,12 @@ jobs:
         uses: actions/checkout@v4
       - name: Obtain upstream BananaOS
         run: git clone --depth=1 https://github.com/JorreFog/BananaLinux.git upstream
+      - name: Install font-rendering dependency
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq python3-pil
       - name: Validate Python scripts
-        run: python3 -m py_compile install-rgds-emmc.py rgds-emmc-storage-patch.py install-preserve-fat32.py rgds-our-appstore-patch.py apply.py rgds-audio-patch.py rgds-menu-patch.py rgds-eq-patch.py rgds-boot-patch.py rgds-filter-patch.py rgds-texture-patch.py rgds-system-filter-patch.py rgds-superdrastic-3point.py rgds-analog-patch.py rgds-cpad-patch.py rgds-mgba-viewport-patch.py rgds-mgba-viewport-source.py rgds-bananafront-shoulders.py verify-preservation.py
+        run: python3 -m py_compile rgds-azeezos-branding.py install-rgds-emmc.py rgds-emmc-storage-patch.py install-preserve-fat32.py rgds-our-appstore-patch.py apply.py rgds-audio-patch.py rgds-menu-patch.py rgds-eq-patch.py rgds-boot-patch.py rgds-filter-patch.py rgds-texture-patch.py rgds-system-filter-patch.py rgds-superdrastic-3point.py rgds-analog-patch.py rgds-cpad-patch.py rgds-mgba-viewport-patch.py rgds-mgba-viewport-source.py rgds-bananafront-shoulders.py verify-preservation.py
       - name: Apply all RG DS modifications
         run: |
           python3 apply.py upstream
