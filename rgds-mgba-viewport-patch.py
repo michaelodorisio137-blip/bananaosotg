@@ -47,6 +47,13 @@ before='{ "gba", "Game Boy Advance", { { "gpsp", "gpSP" }, { "mgba", "mGBA" },'
 after='{ "gba", "Game Boy Advance", { { "gpsp", "gpSP" }, { "mgba", "mGBA" }, { "mgba_expanded", "mGBA Expanded 320x204 (experimental)" },'
 if after not in s:
     if s.count(before)!=1: sys.exit("Game Boy Advance core selection list changed")
-    ui.write_text(s.replace(before,after,1))
-print("RG DS core selector: gpSP / standard mGBA / experimental mGBA 320x204.")
-print("Default core and every standard emulator path preserved.")
+    s=s.replace(before,after,1)
+for system in ("gbc", "gb"):
+    before = '{ "' + system + '", "' + ("Game Boy Color" if system == "gbc" else "Game Boy") + '", { { "gambatte", "Gambatte" }, { "mgba", "mGBA" },'
+    after = before + ' { "mgba_expanded", "mGBA Expanded 320x204 (experimental)" },'
+    if after not in s:
+        if s.count(before)!=1: sys.exit("GB/GBC core selection list changed: "+system)
+        s=s.replace(before, after, 1)
+ui.write_text(s)
+print("RG DS core selector: expanded mGBA offered for GBA, GB and GBC.")
+print("All three system defaults and standard cores remain unchanged.")
