@@ -65,7 +65,6 @@ if marker not in body:
         sys.exit('fileops.cpp has changed upstream; cannot safely locate the second card label.')
     fileops.write_text(body.replace(old, new, 1))
 
-
 # RG DS shoulder mirroring: L2 duplicates L1, R2 duplicates R1 in both DS emulators.
 # Keep all other layouts and button settings intact.
 cfg = repo / 'system/rootfs/etc/banana/settings.conf'
@@ -100,10 +99,7 @@ if marker not in body:
     anchor = "S=$" + "{NDS_BUTTONS_SETTINGS:-/data/banana/settings.conf}   # (the variable: tests)\n"
     migrate = r'''# RG DS shoulder mirrors: first-run migration of stock SD-card settings
 if [ "$S" = /data/banana/settings.conf ] && [ -f "$S" ] && [ ! -e /data/banana/.rgds-shoulder-mirror-v1 ]; then
-    if grep -Eq '^ *nds_btn_l2 *= *swap *
-print('Build with: make rgds')
-print('Generated image: output/rgds/images/banana-rgds.img.gz')
- "$S" &&
+    if grep -Eq '^ *nds_btn_l2 *= *swap * "$S" &&
        grep -Eq '^ *nds_btn_r2 *= *ff *
 print('Build with: make rgds')
 print('Generated image: output/rgds/images/banana-rgds.img.gz')
@@ -119,6 +115,32 @@ fi
     buttons.write_text(body.replace(anchor, anchor + migrate, 1))
 
 print('DS shoulder mirroring enabled: L2 -> L, R2 -> R (both emulators).')
+ "$S" &&
+       grep -Eq '^ *nds_btn_r2 *= *ff * "$S"; then
+        sed -i -e 's/^ *nds_btn_l2 *= *swap *$/nds_btn_l2 = l/' \
+               -e 's/^ *nds_btn_r2 *= *ff *$/nds_btn_r2 = r/' "$S"
+    fi
+    : > /data/banana/.rgds-shoulder-mirror-v1
+fi
+'''
+    if anchor not in body:
+        sys.exit('nds-buttons startup has changed upstream; cannot install shoulder migration.')
+    buttons.write_text(body.replace(anchor, anchor + migrate, 1))
+
+print('DS shoulder mirroring enabled: L2 -> L, R2 -> R (both emulators).')
+ "$S"; then
+        sed -i -e 's/^ *nds_btn_l2 *= *swap *$/nds_btn_l2 = l/' \
+               -e 's/^ *nds_btn_r2 *= *ff *$/nds_btn_r2 = r/' "$S"
+    fi
+    : > /data/banana/.rgds-shoulder-mirror-v1
+fi
+'''
+    if anchor not in body:
+        sys.exit('nds-buttons startup has changed upstream; cannot install shoulder migration.')
+    buttons.write_text(body.replace(anchor, anchor + migrate, 1))
+
+print('DS shoulder mirroring enabled: L2 -> L, R2 -> R (both emulators).')
+
 
 print('USB storage source changes installed for original RG DS.')
 print('Build with: make rgds')
