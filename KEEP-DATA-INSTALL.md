@@ -1,4 +1,4 @@
-# RG DS: install BananaOS on a 1 TB FAT32 card without formatting its games
+# RG DS: install AzeezOS on a 1 TB FAT32 card without formatting its games
 
 Do NOT use Etcher or Rufus with the normal .img.gz: whole-disk flashing replaces the card partition table. This procedure instead preserves the physical sectors of the original FAT32 data partition. Back up irreplaceable saves; resizing and rewriting GPT is not risk-free.
 
@@ -32,7 +32,7 @@ The script refuses mounted volumes, wrong file systems, non-512-byte-sector devi
 
 The script backs up the current partition table, asks for explicit typed authorization, reconstructs GPT metadata, keeps FAT32 at the identical physical start and end (as partition 4), and copies bootloader/OS from the image to partitions 1-3. It never invokes mkfs on the data partition. Its checks are not a guarantee against power failures or wrong-device selection.
 
-Eject the card, install in the RG DS and boot. On boot, BananaOS sees partition 4, does not run its empty-card firstboot formatter, and mounts FAT32 through the fallback mount path. Existing files remain, but ROMs must be in the BananaOS folder layout to appear automatically.
+Eject the card, install in the RG DS and boot. On boot, AzeezOS sees partition 4, does not run its empty-card firstboot formatter, and mounts FAT32 through the fallback mount path. Existing files remain, but ROMs must be in the AzeezOS folder layout to appear automatically.
 
 ## USB access
 
@@ -40,4 +40,4 @@ The custom firmware includes a USB storage watcher, FAT32/exFAT USB mounting, an
 
 ## Our Apps storefront
 
-Our Apps appears on its own menu tile and reuses BananaOS's native Store package manager, with a separate online catalog at our-apps/catalog.json. Native Linux aarch64 apps are downloaded and installed from published GitHub releases, then appear on the Apps shelf. Add catalog entries only when package releases are built and verified; the initial catalog is deliberately empty. The normal BananaOS Store remains available.
+Our Apps appears on its own menu tile and reuses AzeezOS's native Store package manager, with a separate online catalog at our-apps/catalog.json. Native Linux aarch64 apps are downloaded and installed from published GitHub releases, then appear on the Apps shelf. Add catalog entries only when package releases are built and verified; the initial catalog is deliberately empty. The normal AzeezOS Store remains available.
