@@ -145,6 +145,16 @@ for rel in (
     if not (root / rel).is_file():
         sys.exit("Requested renderer asset missing: " + rel)
 
+# New original RG DS analog touchscreen modes: explicit opt-in, preserve 3D
+# texture filtering and every existing setting. The native SuperDrastic patch
+# must be present for the Settings rows to be functional.
+for token in ('"DSFLIP_ANALOG_TOUCH"', '"DSFLIP_ANALOG_DEADZONE"', '"DSFLIP_ANALOG_SENSITIVITY"'):
+    if token not in patched("ui/src/settings.cpp"):
+        sys.exit("RG DS analog controls missing from SuperDrastic Settings: " + token)
+an_alog = root / "buildroot/patches/superdrastic/0002-rgds-right-analog-stylus.patch"
+if not an_alog.is_file() or "rgds_analog_tick" not in an_alog.read_text():
+    sys.exit("SuperDrastic analog SDL input patch missing")
+
 # This protects important existing features from accidental removal in source.
 for path, tokens in {
     "system/rootfs/etc/banana/settings.conf": (
