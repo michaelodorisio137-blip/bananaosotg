@@ -7,6 +7,7 @@ on:
       - 'rgds-mgba-viewport-source.py'
       - 'rgds-mgba-viewport-patch.py'
       - '.github/workflows/test-gb-gbc-viewport.yml'
+      - 'gb-gbc-port/verify-live-viewport.py'
 
 permissions:
   contents: read
@@ -43,6 +44,9 @@ jobs:
           cmake --build core-build --parallel 4
           find core-build -type f -name 'mgba_libretro.so' -size +100k -print | tee /tmp/cores
           test -s /tmp/cores
+      - name: Runtime GB and GBC framebuffer verification
+        run: |
+          python3 gb-gbc-port/verify-live-viewport.py "$(head -n 1 /tmp/cores)"
       - name: Confirm exported libretro API
         run: |
           SO=$(head -n 1 /tmp/cores)
