@@ -1,0 +1,75 @@
+name: RG DS Dolphin Speed APK
+
+on:
+  push:
+    branches:
+      - rgds-dolphin-speed
+    paths:
+      - "rgds-dolphin/**"
+      - ".github/workflows/build-rgds-dolphin.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 110
+    steps:
+      - name: Checkout RG DS patch
+        uses: actions/checkout@v4
+
+      - name: Fetch pinned upstream Dolphin source
+        shell: bash
+        run: |
+          git clone --filter=blob:none https://github.com/dolphin-emu/dolphin.git dolphin
+          git -C dolphin checkout --detach a76221bc3109da6147d7e22b941c64712103dd6e
+          git -C dolphin submodule update --init --recursive --depth 1
+          git -C dolphin rev-parse HEAD
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+          cache-dependency-path: |
+            dolphin/Source/Android/gradle/wrapper/gradle-wrapper.properties
+            dolphin/Source/Android/gradle/libs.versions.toml
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android build dependencies
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager --install "platforms;android-37" "build-tools;37.0.0" "ndk;30.0.15729638" "cmake;3.31.6"
+
+      - name: Apply RG DS speed-biased defaults
+        run: |
+          python3 rgds-dolphin/patch_rgds_dolphin.py dolphin
+          python3 -m compileall -q rgds-dolphin/patch_rgds_dolphin.py
+
+      - name: Build RG DS ARM64 APK
+        working-directory: dolphin/Source/Android
+        env:
+          GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx3072m"
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=2 --stacktrace
+
+      - name: Verify APK output
+        shell: bash
+        run: |
+          find dolphin/Source/Android/app/build/outputs/apk/debug -type f -name '*.apk' -print
+          test -n "$(find dolphin/Source/Android/app/build/outputs/apk/debug -type f -name '*.apk' -print -quit)"
+
+      - name: Upload installable APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rgds-dolphin-speed-apk
+          path: dolphin/Source/Android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 30
