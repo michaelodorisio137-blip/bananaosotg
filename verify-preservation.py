@@ -189,6 +189,25 @@ source_patch = root / "buildroot/package/libretro-mgba/rgds-mgba-viewport-source
 if not source_patch.is_file() or 'GBA_VIDEO_HORIZONTAL_PIXELS = 320' not in source_patch.read_text():
     sys.exit("mGBA 320x204 renderer source transformation missing")
 
+# The same opt-in expanded core must be available for GB and GBC.
+ui = patched("ui/src/settings.cpp")
+for system, label in (("gb", "Game Boy"), ("gbc", "Game Boy Color")):
+    prefix = '{ "' + system + '", "' + label + '", {'
+    if prefix not in ui or not any(
+        '"mgba_expanded", "mGBA Expanded 320x204 (experimental)"' in line
+        for line in ui.splitlines() if prefix in line
+    ):
+        sys.exit("mGBA Expanded selection missing for "+label)
+src = source_patch.read_text()
+for token in ("RGDS_GB_EXT_W 320", "RGDS_GB_EXT_H 204",
+              "rgdsGBRenderBorder", "GB_VIDEO_HORIZONTAL_PIXELS",
+              "RGDS_GB_INSET_X 80", "RGDS_GB_INSET_Y 30"):
+    if token not in src:
+        sys.exit("GB/GBC experimental geometry source missing: "+token)
+if "GB_VIDEO_HORIZONTAL_PIXELS = 320" in src or "GB_VIDEO_VERTICAL_PIXELS = 204" in src:
+    sys.exit("Real GB hardware video constants MUST NOT be changed")
+print("PASS: GB and GBC can select experimental mGBA with native 160x144 centred")
+
 # This protects important existing features from accidental removal in source.
 for path, tokens in {
     "system/rootfs/etc/banana/settings.conf": (
