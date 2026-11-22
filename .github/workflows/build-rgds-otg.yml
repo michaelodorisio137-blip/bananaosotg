@@ -7,6 +7,9 @@ on:
       - '.github/workflows/build-rgds-otg.yml'
       - 'apply.py'
       - 'usb-sd2'
+      - 'rgds-audio-patch.py'
+      - 'rgds-ds-classic.json'
+      - 'verify-preservation.py'
 
 permissions:
   contents: read
@@ -33,7 +36,7 @@ jobs:
 
       - name: Validate patch scripts
         run: |
-          python3 -m py_compile apply.py
+          python3 -m py_compile apply.py rgds-audio-patch.py verify-preservation.py
           sh -n usb-sd2
 
       - name: Get BananaOS source
@@ -44,6 +47,7 @@ jobs:
       - name: Apply USB storage integration
         run: |
           python3 apply.py BananaLinux
+          python3 verify-preservation.py BananaLinux
           sh -n BananaLinux/system/rootfs/usr/libexec/banana/usb-sd2
           sh -n BananaLinux/system/rootfs/usr/libexec/banana/sd2
           sh -n BananaLinux/system/rootfs/etc/init.d/rcS
