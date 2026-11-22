@@ -19,6 +19,10 @@ on:
       - 'rgds-ds-classic.json'
       - 'verify-preservation.py'
 
+concurrency:
+  group: rgds-firmware-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
