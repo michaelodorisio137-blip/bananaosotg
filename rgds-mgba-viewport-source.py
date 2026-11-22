@@ -20,6 +20,7 @@ changes={
     ],
     "include/mgba/internal/gba/renderers/video-software.h":[
         ("uint8_t endX;", "uint16_t endX;"),
+        ("uint32_t scanlineDirty[5];", "uint32_t scanlineDirty[7];"),
     ],
     "include/mgba/internal/gba/video.h":[
         ("uint8_t end;", "uint16_t end;"),
