@@ -209,6 +209,11 @@ patch_file.write_text(patch_text)
 print('GBA shoulders: L1/L2 -> L, R1/R2 -> R in BananaFront and RetroArch.')
 
 
+# Add the original RG DS-only speaker EQ. Preserve upstream Plus tuning and
+# every user setting; create a board-specific asset only when absent.
+import subprocess
+subprocess.run([sys.executable, str(Path(__file__).with_name('rgds-eq-patch.py')), str(repo)], check=True)
+
 # Install the optional SD-card startup audio mixer and transition.
 import subprocess
 subprocess.run([sys.executable, str(Path(__file__).with_name('rgds-audio-patch.py')), str(repo)], check=True)
