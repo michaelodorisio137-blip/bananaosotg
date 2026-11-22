@@ -73,4 +73,15 @@ if [ "$BANANA_SYSTEM" = n64 ]; then
 fi
 '''
 sub(ra, anchor, n64hook + anchor)
+# SuperDrastic is built from the pinned GitHub revision by Buildroot.
+# Apply the three-point kernel extension to that extracted source before
+# generating its AArch64 assembly code. Fail closed if source moves.
+import shutil
+pkg = root / "buildroot/package/superdrastic"
+shutil.copyfile(Path(__file__).with_name("rgds-superdrastic-3point.py"),
+                pkg / "rgds-superdrastic-3point.py")
+sub("buildroot/package/superdrastic/superdrastic.mk",
+    '\tcd $(@D) && $(HOST_DIR)/bin/python3 src/rast/kerngen.py src/rast/rast_kern.S',
+    '\tcd $(@D) && $(HOST_DIR)/bin/python3 $(BR2_EXTERNAL_BANANA_PATH)/package/superdrastic/rgds-superdrastic-3point.py $(@D)\n'
+    '\tcd $(@D) && $(HOST_DIR)/bin/python3 src/rast/kerngen.py src/rast/rast_kern.S')
 print("SuperDrastic native filtering and GLideN64 texture-filter controls added.")
