@@ -1,4 +1,4 @@
-name: Build RG DS BananaOS with USB OTG storage
+name: Build AzeezOS RG DS with USB OTG and eMMC
 
 on:
   workflow_dispatch:
@@ -7,6 +7,7 @@ on:
       - '.github/workflows/build-rgds-otg.yml'
       - 'apply.py'
       - 'rgds-emmc-storage-patch.py'
+      - 'rgds-azeezos-branding.py'
       - 'install-rgds-emmc.py'
       - 'rgds-our-appstore-patch.py'
       - 'our-apps/**'
@@ -55,11 +56,11 @@ jobs:
       - name: Install upstream build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential bc bison flex libssl-dev libelf-dev unzip rsync cpio file wget python3-dev swig libgnutls28-dev
+          sudo apt-get install -y build-essential bc bison flex libssl-dev libelf-dev unzip rsync cpio file wget python3-dev python3-pil swig libgnutls28-dev
 
       - name: Validate patch scripts
         run: |
-          python3 -m py_compile install-rgds-emmc.py rgds-emmc-storage-patch.py rgds-our-appstore-patch.py apply.py rgds-audio-patch.py rgds-menu-patch.py rgds-eq-patch.py rgds-boot-patch.py rgds-filter-patch.py rgds-texture-patch.py rgds-system-filter-patch.py rgds-superdrastic-3point.py rgds-analog-patch.py rgds-cpad-patch.py rgds-mgba-viewport-patch.py rgds-mgba-viewport-source.py rgds-bananafront-shoulders.py verify-preservation.py
+          python3 -m py_compile rgds-azeezos-branding.py install-rgds-emmc.py rgds-emmc-storage-patch.py rgds-our-appstore-patch.py apply.py rgds-audio-patch.py rgds-menu-patch.py rgds-eq-patch.py rgds-boot-patch.py rgds-filter-patch.py rgds-texture-patch.py rgds-system-filter-patch.py rgds-superdrastic-3point.py rgds-analog-patch.py rgds-cpad-patch.py rgds-mgba-viewport-patch.py rgds-mgba-viewport-source.py rgds-bananafront-shoulders.py verify-preservation.py
           sh -n usb-sd2
 
       # actions/checkout uses authenticated GitHub API/git transport and can
@@ -115,7 +116,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: BananaOS-RGDS-eMMC-OurApps-USB-OTG
+          name: AzeezOS-RGDS-eMMC-OurApps-USB-OTG
           retention-days: 7
           compression-level: 0
           path: |
