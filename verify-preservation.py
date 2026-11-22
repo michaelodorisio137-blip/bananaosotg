@@ -90,8 +90,6 @@ for before, after in (
      '            { "ra_shader_override", "inherit", ENUM, RGDS_SCREEN_OVERRIDES, 0, 0, true, true },'),
     ('{ "theme", "dark", TEXT, nullptr, 0, 0 }',
      '{ "theme", "user:rgds-ds-classic", TEXT, nullptr, 0, 0 }'),
-    ('const char* const SHADERS[] = { "off", "lcd", "crt", "sharp", nullptr };',
-     'const char* const SHADERS[] = { "off", "lcd", "crt", "sharp", "bilinear", "threepoint", nullptr };'),
     ('{ "nds_btn_l2", "swap", ENUM, NDS_BTN, 0, 0, true },',
      '{ "nds_btn_l2", "l", ENUM, NDS_BTN, 0, 0, true },'),
     ('{ "nds_btn_r2", "ff", ENUM, NDS_BTN, 0, 0, true },',
@@ -120,10 +118,10 @@ if not (root / "system/rootfs/usr/share/banana/themes/rgds-ds-classic.json").is_
     sys.exit("DS-style menu theme missing")
 
 # The native SuperDrastic 3D filtering option must be independent of the
-# on-panel shader and accept the real rasterizer's documented 0/1/2 modes.
+# on-panel shader and accept compiled 0/1/2 modes plus custom 3-point mode.
 settings_ui = patched("ui/src/settings.cpp")
 if ('sd, "DSFLIP_RAST_TEXFILTER",' not in settings_ui or
-    '"Original (nearest)", "Bilinear", "Sharp bilinear"' not in settings_ui):
+    '"Nearest", "Bilinear", "Sharp bilinear", "N64 3-point"' not in settings_ui):
     sys.exit("SuperDrastic polygon texture filtering UI missing")
 if 'menu, "ra_shader", { "Off", "LCD", "CRT", "Sharp pixels", "Bilinear", "N64 3-point" }' not in settings_ui:
     sys.exit("Global screen filter choices missing")
