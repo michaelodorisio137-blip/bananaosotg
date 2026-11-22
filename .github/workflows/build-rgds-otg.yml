@@ -6,6 +6,8 @@ on:
     paths:
       - '.github/workflows/build-rgds-otg.yml'
       - 'apply.py'
+      - 'rgds-emmc-storage-patch.py'
+      - 'install-rgds-emmc.py'
       - 'rgds-our-appstore-patch.py'
       - 'our-apps/**'
       - 'rgds-bananafront-shoulders.py'
@@ -57,7 +59,7 @@ jobs:
 
       - name: Validate patch scripts
         run: |
-          python3 -m py_compile rgds-our-appstore-patch.py apply.py rgds-audio-patch.py rgds-menu-patch.py rgds-eq-patch.py rgds-boot-patch.py rgds-filter-patch.py rgds-texture-patch.py rgds-system-filter-patch.py rgds-superdrastic-3point.py rgds-analog-patch.py rgds-cpad-patch.py rgds-mgba-viewport-patch.py rgds-mgba-viewport-source.py rgds-bananafront-shoulders.py verify-preservation.py
+          python3 -m py_compile install-rgds-emmc.py rgds-emmc-storage-patch.py rgds-our-appstore-patch.py apply.py rgds-audio-patch.py rgds-menu-patch.py rgds-eq-patch.py rgds-boot-patch.py rgds-filter-patch.py rgds-texture-patch.py rgds-system-filter-patch.py rgds-superdrastic-3point.py rgds-analog-patch.py rgds-cpad-patch.py rgds-mgba-viewport-patch.py rgds-mgba-viewport-source.py rgds-bananafront-shoulders.py verify-preservation.py
           sh -n usb-sd2
 
       # actions/checkout uses authenticated GitHub API/git transport and can
@@ -106,17 +108,19 @@ jobs:
         run: |
           test -s BananaLinux/output/rgds/images/banana-rgds.img.gz
           gzip -t BananaLinux/output/rgds/images/banana-rgds.img.gz
-          sha256sum BananaLinux/output/rgds/images/banana-rgds.img.gz > SHA256SUMS.txt
+          cp BananaLinux/output/rgds/images/banana-rgds.img.gz BananaLinux/output/rgds/images/banana-rgds-emmc.img.gz
+          sha256sum BananaLinux/output/rgds/images/banana-rgds*.img.gz > SHA256SUMS.txt
 
       - name: Upload firmware image
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: BananaOS-RGDS-USB-OTG
+          name: BananaOS-RGDS-eMMC-OurApps-USB-OTG
           retention-days: 7
           compression-level: 0
           path: |
             BananaLinux/output/rgds/images/banana-rgds.img.gz
+            BananaLinux/output/rgds/images/banana-rgds-emmc.img.gz
             BananaLinux/output/rgds/images/banana-rgds-*.update.tar
             SHA256SUMS.txt
             upstream-commit.txt
