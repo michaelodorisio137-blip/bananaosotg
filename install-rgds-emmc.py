@@ -117,10 +117,8 @@ def main():
     target, _, capacity = emmc[0]
     if boot_disk == target:
         refuse("Never flash the booted root device")
-    if not args.image.is_file() or "rgds.img" not in args.image.name:
+    if not args.image.is_file() or args.image.name != "banana-rgds-emmc.img.gz":
         refuse("Supply an RG DS firmware .img.gz, not a Plus image")
-    if not str(args.image).endswith(".img.gz"):
-        refuse("Only .img.gz firmware files are accepted")
     if os.path.realpath(args.image).startswith("/run/") or args.image.is_symlink():
         refuse("Put the firmware in the SD data partition before running the installer")
     print("BOARD: original RG DS")
@@ -175,7 +173,21 @@ def main():
                 nleft -= len(chunk)
             os.fsync(out.fileno())
         subprocess.run(["sync"], check=True)
+        # Discard page cache before read-back so we do not merely verify cached writes.
+        try:
+            Path("/proc/sys/vm/drop_caches").write_text("3\n")
+        except OSError:
+            pass
         verify(target, n, checksum)
+        # The image is ~600MiB, but the eMMC is 32GB. Move its backup GPT
+        # header to the actual end of internal storage (as BananaOS does).
+        subprocess.run(["sfdisk", "--relocate", "gpt-bak-std", target], check=True)
+        table = subprocess.run(["sfdisk", "--json", target],
+                               check=True, capture_output=True, text=True)
+        import json
+        names = [x.get("name") for x in json.loads(table.stdout)["partitiontable"]["partitions"]]
+        if names[:3] != ["boot", "banana-root-a", "banana-root-b"]:
+            refuse("Unexpected eMMC partition table after GPT relocation")
         print("\nVERIFIED: internal eMMC contains the BananaOS boot/system image.")
         print("Shut down the RG DS. REMOVE temporary boot SD.")
         print("Insert the untouched 1TB FAT32 card and boot. /data will mount from it.")
