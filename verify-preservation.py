@@ -44,6 +44,10 @@ allowed_changed = {
     "ui/src/library.cpp",   # game screenshot preview metadata
     "ui/src/library.h",
     "ui/rnds/RndsUI.h",
+    "ui/src/settings.cpp",              # requested renderer controls
+    "ui/src/splash.cpp",                # DUNGEON O boot
+    "system/rootfs/usr/libexec/banana/run-drastic",
+    "buildroot/package/superdrastic/superdrastic.mk",
 }
 changed = set(git("diff", "--name-only").splitlines())
 unexpected = sorted(changed - allowed_changed)
@@ -76,6 +80,14 @@ if patched(template) != expected:
 defaults = "ui/src/settings_defaults.cpp"
 expected = upstream(defaults)
 for before, after in (
+    ('const char* const SHADERS[] = { "off", "lcd", "crt", "sharp", nullptr };',
+     'const char* const SHADERS[] = { "off", "lcd", "crt", "sharp", "bilinear", "threepoint", nullptr };\n'
+     '        const char* const N64_TEXTURE_FILTER[] = { "3point", "standard", nullptr };\n'
+     '        const char* const RGDS_SCREEN_OVERRIDES[] = { "inherit", "off", "bilinear", "threepoint", "lcd", "crt", "sharp", nullptr };'),
+    ('{ "ra_shader", "off", ENUM, SHADERS, 0, 0, true },',
+     '{ "ra_shader", "off", ENUM, SHADERS, 0, 0, true },\n'
+     '            { "rgds_n64_texfilter", "3point", ENUM, N64_TEXTURE_FILTER, 0, 0, true },\n'
+     '            { "ra_shader_override", "inherit", ENUM, RGDS_SCREEN_OVERRIDES, 0, 0, true, true },'),
     ('{ "theme", "dark", TEXT, nullptr, 0, 0 }',
      '{ "theme", "user:rgds-ds-classic", TEXT, nullptr, 0, 0 }'),
     ('const char* const SHADERS[] = { "off", "lcd", "crt", "sharp", nullptr };',
@@ -123,6 +135,17 @@ for shader in ("rgds-threepoint.frag", "rgds-bilinear.frag"):
 for shader in ("threepoint.glslp", "threepoint.glsl", "bilinear.glslp", "bilinear.glsl"):
     if not (root / "system/rootfs/usr/share/libretro/shaders/glsl/rgds" / shader).is_file():
         sys.exit("RetroArch screen shader missing: " + shader)
+
+for rel in (
+    "system/rootfs/usr/share/libretro/shaders/glsl/rgds/threepoint.glsl",
+    "system/rootfs/usr/share/libretro/shaders/glsl/rgds/threepoint.glslp",
+    "system/rootfs/usr/share/libretro/shaders/glsl/rgds/bilinear.glsl",
+    "system/rootfs/usr/lib/superdrastic/shaders/rgds-threepoint.frag",
+    "system/rootfs/usr/lib/superdrastic/shaders/rgds-bilinear.frag",
+    "buildroot/package/superdrastic/rgds-superdrastic-3point.py",
+):
+    if not (root / rel).is_file():
+        sys.exit("Requested renderer asset missing: " + rel)
 
 # This protects important existing features from accidental removal in source.
 for path, tokens in {
