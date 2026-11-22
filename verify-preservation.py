@@ -155,6 +155,15 @@ an_alog = root / "buildroot/patches/superdrastic/0002-rgds-right-analog-stylus.p
 if not an_alog.is_file() or "rgds_analog_tick" not in an_alog.read_text():
     sys.exit("SuperDrastic analog SDL input patch missing")
 
+# The optional native CPAD mode writes genuine analog coordinates to guest RAM
+# for separately patched DS games; without an opt-in it remains inactive.
+if ('"DSFLIP_CPAD"' not in patched("ui/src/settings.cpp") or
+    '"DSFLIP_CPAD_LAYOUT"' not in patched("ui/src/settings.cpp")):
+    sys.exit("Circle Pad patch controls missing from SuperDrastic menu")
+cpad_file = root / "buildroot/patches/superdrastic/0003-rgds-cpad-guest-ram.patch"
+if not cpad_file.is_file() or "rgds_cpad_store" not in cpad_file.read_text():
+    sys.exit("Real analog guest-memory bridge missing")
+
 # This protects important existing features from accidental removal in source.
 for path, tokens in {
     "system/rootfs/etc/banana/settings.conf": (
