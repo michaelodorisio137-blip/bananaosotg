@@ -89,7 +89,7 @@
      }
 -    int r = real(e);
 -    if (r && e && ok) {
--        resume_saw_event(e);
+-        resume_saw_event(e);                         /* a save/load state press: CPU boost (resume.c, cpugov.c) */
 +    int r = real(e);
 +    if (r && e && ok) {
 +        uint32_t event_type;
@@ -104,7 +104,7 @@
 +    }
 +    if (ok) rgds_analog_tick();
 +    if (r && e && ok) {
-+        resume_saw_event(e);
++        resume_saw_event(e);                         /* a save/load state press: CPU boost (resume.c, cpugov.c) */
          if (pacing_lowlat) lowlat_saw_event(e);      /* DraStic's fast-forward on or off (low latency) */
          if (menu_event(e)) return 0;                 /* the menu button: the in-game menu (menu.c), not DraStic's */
      }
