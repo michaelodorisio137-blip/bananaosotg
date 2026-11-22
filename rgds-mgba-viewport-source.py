@@ -200,3 +200,18 @@ p.write_text(s)
 
 print("GB/GBC native LCD preserved and centred in a 320x204 VRAM-tilemap border.")
 print("Super Game Boy existing 256x224 border path unchanged; no GB timing constants widened.")
+
+
+# Give the experimental GB/GBC/GBA core its own libretro identity. RetroArch
+# and BananaFront use library_name to locate per-core options and overrides;
+# keeping the ordinary "mGBA" name caused an old mGBA options profile to leak
+# into the expanded core and concealed which core was actually running.
+p=root/"src/platform/libretro/libretro.c"
+s=p.read_text()
+old="\tinfo->library_name = projectName;"
+new='\tinfo->library_name = "mGBA Expanded RGDS";'
+if new not in s:
+    if s.count(old)!=1: sys.exit("mGBA libretro identity anchor moved")
+    s=s.replace(old,new,1)
+p.write_text(s)
+print("Unique libretro core identity: mGBA Expanded RGDS (independent options).")
