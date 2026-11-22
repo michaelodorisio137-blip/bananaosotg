@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'apply.py'
+      - 'rgds-bananafront-shoulders.py'
       - 'rgds-audio-patch.py'
       - 'rgds-menu-patch.py'
       - 'rgds-eq-patch.py'
@@ -39,7 +40,7 @@ jobs:
       - name: Obtain upstream BananaOS
         run: git clone --depth=1 https://github.com/JorreFog/BananaLinux.git upstream
       - name: Validate Python scripts
-        run: python3 -m py_compile apply.py rgds-audio-patch.py rgds-menu-patch.py rgds-eq-patch.py rgds-boot-patch.py rgds-filter-patch.py rgds-texture-patch.py rgds-system-filter-patch.py rgds-superdrastic-3point.py rgds-analog-patch.py rgds-cpad-patch.py rgds-mgba-viewport-patch.py rgds-mgba-viewport-source.py verify-preservation.py
+        run: python3 -m py_compile apply.py rgds-audio-patch.py rgds-menu-patch.py rgds-eq-patch.py rgds-boot-patch.py rgds-filter-patch.py rgds-texture-patch.py rgds-system-filter-patch.py rgds-superdrastic-3point.py rgds-analog-patch.py rgds-cpad-patch.py rgds-mgba-viewport-patch.py rgds-mgba-viewport-source.py rgds-bananafront-shoulders.py verify-preservation.py
       - name: Apply all RG DS modifications
         run: |
           python3 apply.py upstream
@@ -49,6 +50,19 @@ jobs:
           sh -n upstream/system/rootfs/usr/libexec/banana/run-drastic
           sh -n upstream/system/rootfs/usr/libexec/banana/run-retroarch
           sh -n upstream/system/rootfs/usr/libexec/banana/run-bananafront
+      - name: Test exact BananaFront source transformation
+        run: |
+          git init -q bananafront-test
+          git -C bananafront-test remote add origin https://github.com/JorreFog/BananaFront.git
+          git -C bananafront-test fetch -q --depth 1 origin a23fad993a8d29ea0d8394e176b8b91e22c39567
+          git -C bananafront-test checkout -q FETCH_HEAD
+          python3 rgds-bananafront-shoulders.py bananafront-test/src/input.c
+          python3 rgds-bananafront-shoulders.py bananafront-test/src/input.c
+          test "$(grep -c 'RG DS: GBA only. Mirror' bananafront-test/src/input.c)" -eq 1
+          grep -q 'BANANAFRONT_POST_EXTRACT_HOOKS += BANANAFRONT_RGDS_GBA_SHOULDERS' upstream/buildroot/package/bananafront/bananafront.mk
+          test ! -e upstream/buildroot/patches/bananafront/0001-rgds-gba-shoulder-mirrors.patch
+          git -C bananafront-test diff --check
+          git -C upstream diff --check
       - name: Generate and assemble native SuperDrastic three-point sampler
         run: |
           git init -q superdrastic
