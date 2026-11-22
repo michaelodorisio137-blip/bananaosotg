@@ -1,0 +1,6 @@
+{
+  "schema": 1,
+  "name": "Our Apps",
+  "_comment": "Custom RG DS native-app catalog. Add entries after compatible Linux aarch64 releases are published and verified.",
+  "apps": []
+}
