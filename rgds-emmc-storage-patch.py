@@ -6,6 +6,7 @@ only the original RG DS when its root filesystem is on MMC-type eMMC
 will attempt to mount the single removable SD partition as /data.
 """
 from pathlib import Path
+import shutil
 import sys
 
 if len(sys.argv) != 2:
@@ -50,4 +51,11 @@ fi
         raise SystemExit("BananaLinux rcS data-layout anchor changed")
     body = body.replace(tail, "fi\n" + tail, 1)
     rcs.write_text(body)
+# Keep the eMMC installer available on the temporary SD system over SSH.
+installer_source = Path(__file__).with_name("install-rgds-emmc.py")
+installer_target = repo / "system/rootfs/usr/libexec/banana/install-rgds-emmc.py"
+if not installer_source.is_file():
+    raise SystemExit("Internal installation tool not found beside source patch")
+shutil.copyfile(installer_source, installer_target)
+installer_target.chmod(0o755)
 print("Internal RG DS boot option: external SD FAT32 at /data, fallback eMMC data; no SD boot changes.")
