@@ -1,0 +1,46 @@
+name: Validate RG DS custom patches
+
+on:
+  push:
+    paths:
+      - 'apply.py'
+      - 'rgds-audio-patch.py'
+      - 'rgds-menu-patch.py'
+      - 'rgds-ds-classic.json'
+      - 'usb-sd2'
+      - '.github/workflows/validate-custom.yml'
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout modifications
+        uses: actions/checkout@v4
+      - name: Obtain upstream BananaOS
+        run: git clone --depth=1 https://github.com/JorreFog/BananaLinux.git upstream
+      - name: Validate Python scripts
+        run: python3 -m py_compile apply.py rgds-audio-patch.py rgds-menu-patch.py
+      - name: Apply all RG DS modifications
+        run: python3 apply.py upstream
+      - name: Check JSON menu document
+        run: python3 -c 'import json; json.load(open("rgds-ds-classic.json"))'
+      - name: Install host compilation dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libdrm-dev libasound2-dev libfreetype-dev zlib1g-dev libssl-dev libcurl4-openssl-dev libssh2-1-dev libsmb2-dev libudev-dev
+      - name: Syntax-check modified audio engine with ALSA enabled
+        run: |
+          g++ -std=c++17 -DBANANA_ALSA -Wall -fsyntax-only \
+            -Iupstream/ui/src -Iupstream/ui -Iupstream/ui/rnds \
+            $(pkg-config --cflags alsa freetype2 libdrm zlib) \
+            upstream/ui/src/sound.cpp
+      - name: Syntax-check menu and screenshot support
+        run: |
+          for f in layout.cpp library.cpp main.cpp; do
+            g++ -std=c++17 -Wall -fsyntax-only \
+              -Iupstream/ui/src -Iupstream/ui -Iupstream/ui/rnds \
+              $(pkg-config --cflags freetype2 libdrm zlib) \
+              "upstream/ui/src/$f"
+          done
