@@ -226,6 +226,16 @@ for asset in ("system/rootfs/usr/libexec/banana/run-our-appstore",
     if not (root / asset).is_file():
         sys.exit("Our Apps resource missing: " + asset)
 
+# The internal-boot overlay must leave original SD boot mode unchanged.
+startup = patched("system/rootfs/etc/init.d/rcS")
+for token in ("# RG DS internal eMMC boot: use external FAT32 card for all user data",
+              "if ! grep -q ' /data ' /proc/mounts; then",
+              'echo "$part" > /run/banana/data-partition'):
+    if token not in startup:
+        sys.exit("RG DS internal FAT32 storage support missing: " + token)
+if not (root / "system/rootfs/usr/libexec/banana/install-rgds-emmc.py").exists():
+    sys.exit("Internal eMMC installer missing from system image")
+print("PASS: Separate internal eMMC boot mode and FAT32 data-card mount")
 print("PASS: No unexpected modified BananaOS source files")
 print("PASS: All unspecified settings.conf options exactly match upstream")
 print("PASS: All unspecified settings-menu defaults exactly match upstream")
