@@ -38,6 +38,8 @@ allowed_changed = {
     "system/rootfs/usr/libexec/banana/run-bananafront",
     "ui/src/main.cpp",      # optional startup-audio playback
     "ui/src/sound.cpp",     # optional menu-music mixer
+    "ui/src/splash.cpp",    # original RG DS DUNGEON O boot renderer
+    "ui/src/settings.cpp",  # additive filter choices, existing options retained
     "ui/src/layout.cpp",    # explicit DS-style clock, calendar and preview hooks
     "ui/src/library.cpp",   # game screenshot preview metadata
     "ui/src/library.h",
@@ -76,6 +78,8 @@ expected = upstream(defaults)
 for before, after in (
     ('{ "theme", "dark", TEXT, nullptr, 0, 0 }',
      '{ "theme", "user:rgds-ds-classic", TEXT, nullptr, 0, 0 }'),
+    ('const char* const SHADERS[] = { "off", "lcd", "crt", "sharp", nullptr };',
+     'const char* const SHADERS[] = { "off", "lcd", "crt", "sharp", "bilinear", "threepoint", nullptr };'),
     ('{ "nds_btn_l2", "swap", ENUM, NDS_BTN, 0, 0, true },',
      '{ "nds_btn_l2", "l", ENUM, NDS_BTN, 0, 0, true },'),
     ('{ "nds_btn_r2", "ff", ENUM, NDS_BTN, 0, 0, true },',
@@ -102,6 +106,23 @@ if patched(plus) != upstream(plus):
     sys.exit("Existing measured RG DS Plus speaker EQ changed")
 if not (root / "system/rootfs/usr/share/banana/themes/rgds-ds-classic.json").is_file():
     sys.exit("DS-style menu theme missing")
+
+# The native SuperDrastic 3D filtering option must be independent of the
+# on-panel shader and accept the real rasterizer's documented 0/1/2 modes.
+settings_ui = patched("ui/src/settings.cpp")
+if ('sd, "DSFLIP_RAST_TEXFILTER",' not in settings_ui or
+    '"Original (nearest)", "Bilinear", "Sharp bilinear"' not in settings_ui):
+    sys.exit("SuperDrastic polygon texture filtering UI missing")
+if 'menu, "ra_shader", { "Off", "LCD", "CRT", "Sharp pixels", "Bilinear", "N64 3-point" }' not in settings_ui:
+    sys.exit("Global screen filter choices missing")
+if 'RG DS DUNGEON O custom dual-panel startup' not in patched("ui/src/splash.cpp"):
+    sys.exit("Custom original RG DS boot renderer missing")
+for shader in ("rgds-threepoint.frag", "rgds-bilinear.frag"):
+    if not (root / "system/rootfs/usr/lib/superdrastic/shaders" / shader).is_file():
+        sys.exit("Custom DS screen shader missing: " + shader)
+for shader in ("threepoint.glslp", "threepoint.glsl", "bilinear.glslp", "bilinear.glsl"):
+    if not (root / "system/rootfs/usr/share/libretro/shaders/glsl/rgds" / shader).is_file():
+        sys.exit("RetroArch screen shader missing: " + shader)
 
 # This protects important existing features from accidental removal in source.
 for path, tokens in {
