@@ -84,7 +84,8 @@ jobs:
       - name: Syntax-check SuperDrastic analog SDL bridge
         run: |
           gcc -std=gnu11 -Wall -fsyntax-only $(pkg-config --cflags libdrm) superdrastic/src/dsflip.c
-          gcc -std=gnu11 -Wall -fsyntax-only -Isuperdrastic/src -Isuperdrastic/src/third_party/rcheevos/include -Isuperdrastic/src/third_party/rcheevos/src superdrastic/src/ra.c
+          # Bundled rcheevos headers are older than the Buildroot-provided version; allow only that preexisting declaration warning.
+          gcc -std=gnu11 -Wall -Wno-error=implicit-function-declaration -fsyntax-only -Isuperdrastic/src -Isuperdrastic/src/third_party/rcheevos/include -Isuperdrastic/src/third_party/rcheevos/src superdrastic/src/ra.c
       - name: Syntax-check modified audio engine with ALSA enabled
         run: |
           g++ -std=c++17 -DBANANA_ALSA -Wall -fsyntax-only \
