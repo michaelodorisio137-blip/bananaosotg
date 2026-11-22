@@ -218,6 +218,13 @@ subprocess.run([sys.executable, str(Path(__file__).with_name('rgds-eq-patch.py')
 import subprocess
 subprocess.run([sys.executable, str(Path(__file__).with_name('rgds-audio-patch.py')), str(repo)], check=True)
 subprocess.run([sys.executable, str(Path(__file__).with_name('rgds-menu-patch.py')), str(repo)], check=True)
+# New original-RG-DS-native startup, independent screen shaders, actual
+# SuperDrastic/N64 texture sampling, and per-emulator screen toggles.
+subprocess.run([sys.executable, str(Path(__file__).with_name('rgds-boot-patch.py')), str(repo)], check=True)
+subprocess.run([sys.executable, str(Path(__file__).with_name('rgds-filter-patch.py')), str(repo)], check=True)
+subprocess.run([sys.executable, str(Path(__file__).with_name('rgds-texture-patch.py')), str(repo)], check=True)
+subprocess.run([sys.executable, str(Path(__file__).with_name('rgds-system-filter-patch.py')), str(repo)], check=True)
+
 # Original RG DS native boot, independent screen filtering, and polygon texture filtering.
 subprocess.run([sys.executable, str(Path(__file__).with_name('rgds-boot-patch.py')), str(repo)], check=True)
 subprocess.run([sys.executable, str(Path(__file__).with_name('rgds-filter-patch.py')), str(repo)], check=True)
