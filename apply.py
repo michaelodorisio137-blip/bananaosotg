@@ -183,29 +183,33 @@ if marker not in body:
         sys.exit('run-bananafront ROM assignment changed upstream.')
     runbf.write_text(body.replace(anchor, anchor + change, 1))
 
-# Buildroot's global package patch directory is set in banana_rgds_defconfig.
-# Patch only the core input mapper, after hardware buttons and hotkeys have
-# been handled, so the original physical button identity remains intact.
-patch_dir = repo / 'buildroot/patches/bananafront'
-patch_dir.mkdir(parents=True, exist_ok=True)
-patch_file = patch_dir / '0001-rgds-gba-shoulder-mirrors.patch'
-patch_text = '''--- a/src/input.c
-+++ b/src/input.c
-@@ -309,5 +309,12 @@ void bf_input_poll(void)
-         b = s;
-     }
-     game_buttons[0] = hotkey_down ? 0 : b & ~job_mask;
-+    // RG DS: GBA only. Either shoulder row may actuate GBA L/R.
-+    if (getenv("BANANAFRONT_GBA_MIRROR")) {
-+        if (game_buttons[0] & (1u << RETRO_DEVICE_ID_JOYPAD_L2))
-+            game_buttons[0] |= 1u << RETRO_DEVICE_ID_JOYPAD_L;
-+        if (game_buttons[0] & (1u << RETRO_DEVICE_ID_JOYPAD_R2))
-+            game_buttons[0] |= 1u << RETRO_DEVICE_ID_JOYPAD_R;
-+    }
-     for (int p = 1; p < NPORT; p++) game_buttons[p] = pbuttons[p];
- }
+# Apply the GBA shoulder mirror immediately after BananaFront extraction, using
+# the unique input assignment as the anchor rather than a brittle patch hunk.
+# Buildroot applies patches with zero fuzz; even minor upstream changes made
+# the earlier line-numbered src/input.c patch fail.
+bf_pkg_dir = repo / 'buildroot/package/bananafront'
+bf_mk = bf_pkg_dir / 'bananafront.mk'
+patcher_source = Path(__file__).with_name('rgds-bananafront-shoulders.py')
+if not bf_mk.is_file() or not patcher_source.is_file():
+    sys.exit('Missing BananaFront makefile or GBA source patcher.')
+shutil.copyfile(patcher_source, bf_pkg_dir / 'rgds-gba-shoulders.py')
+old_patch = repo / 'buildroot/patches/bananafront/0001-rgds-gba-shoulder-mirrors.patch'
+if old_patch.exists():
+    old_patch.unlink()
+body = bf_mk.read_text()
+marker = '# RG DS GBA shoulder mirror: source-anchored POST_EXTRACT hook'
+if marker not in body:
+    anchor = 'BANANAFRONT_DEPENDENCIES = libdrm alsa-lib zlib\n'
+    change = '''# RG DS GBA shoulder mirror: source-anchored POST_EXTRACT hook
+# Avoid GNU patch's strict hunk context and limit the edit to GBA gameplay.
+define BANANAFRONT_RGDS_GBA_SHOULDERS
+\tpython3 $(BANANAFRONT_PKGDIR)/rgds-gba-shoulders.py $(@D)/src/input.c
+endef
+BANANAFRONT_POST_EXTRACT_HOOKS += BANANAFRONT_RGDS_GBA_SHOULDERS
 '''
-patch_file.write_text(patch_text)
+    if anchor not in body:
+        sys.exit('BananaFront makefile changed upstream; cannot install extract hook.')
+    bf_mk.write_text(body.replace(anchor, anchor + change, 1))
 print('GBA shoulders: L1/L2 -> L, R1/R2 -> R in BananaFront and RetroArch.')
 
 
