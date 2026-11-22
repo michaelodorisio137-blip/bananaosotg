@@ -239,3 +239,6 @@ print('Generated image: output/rgds/images/banana-rgds.img.gz')
 
 # Separate Wi-Fi storefront for our native RG DS apps; preserves original Store.
 subprocess.run([sys.executable, str(Path(__file__).with_name("rgds-our-appstore-patch.py")), str(repo)], check=True)
+
+# Opt-in internal eMMC layout (only activated when Linux root is eMMC).
+subprocess.run([sys.executable, str(Path(__file__).with_name("rgds-emmc-storage-patch.py")), str(repo)], check=True)
