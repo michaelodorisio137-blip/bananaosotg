@@ -209,6 +209,10 @@ patch_file.write_text(patch_text)
 print('GBA shoulders: L1/L2 -> L, R1/R2 -> R in BananaFront and RetroArch.')
 
 
+# Install the optional SD-card startup audio mixer and transition.
+import subprocess
+subprocess.run([sys.executable, str(Path(__file__).with_name('rgds-audio-patch.py')), str(repo)], check=True)
+
 print('USB storage source changes installed for original RG DS.')
 print('Build with: make rgds')
 print('Generated image: output/rgds/images/banana-rgds.img.gz')
