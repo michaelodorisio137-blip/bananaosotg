@@ -1,0 +1,163 @@
+--- a/src/dsflip.c
++++ b/src/dsflip.c
+@@ -1154,7 +1154,20 @@
+  * Action Replay patches require a separate guest-memory analog bridge.
+  * SDL joystick axes 2/3 are the original RG DS's right stick. */
+ static int rgds_analog_mode = -1, rgds_analog_sensitivity = 100, rgds_analog_deadzone = 20;
+-static int rgds_stick_x, rgds_stick_y, rgds_analog_down;
++static int rgds_stick_x, rgds_stick_y, rgds_analog_down;
++static int rgds_cpad_axes[4]; /* full-resolution left and right axes */
++int rgds_cpad_active(void) {
++    static int enabled = -1;
++    if (enabled < 0) {
++        const char *v = getenv("DSFLIP_CPAD");
++        enabled = v && (!strcmp(v, "left") || !strcmp(v, "dual")) ? (!strcmp(v, "dual") ? 2 : 1) : 0;
++    }
++    return enabled;
++}
++void rgds_cpad_sticks(int16_t out[4]) {
++    for (int i = 0; i < 4; ++i)
++        out[i] = (int16_t)__atomic_load_n(&rgds_cpad_axes[i], __ATOMIC_RELAXED);
++}
+ static int rgds_real_touch;
+ static uint32_t rgds_last_tick;
+ static void rgds_analog_button(int down) {
+@@ -1169,7 +1182,9 @@
+ }
+ static void rgds_analog_setup(void) {
+     const char *v = getenv("DSFLIP_ANALOG_TOUCH");
+-    rgds_analog_mode = v && !strcmp(v, "touch") ? 1 : v && !strcmp(v, "fps") ? 2 : 0;
++    rgds_analog_mode = v && !strcmp(v, "touch") ? 1 : v && !strcmp(v, "fps") ? 2 : 0;
++    /* A real CPAD game hack owns its sticks, not the touchscreen mapper. */
++    if (rgds_cpad_active()) rgds_analog_mode = 0;
+     v = getenv("DSFLIP_ANALOG_SENSITIVITY");
+     if (v) { int n = atoi(v); if (n >= 25 && n <= 250) rgds_analog_sensitivity = n; }
+     v = getenv("DSFLIP_ANALOG_DEADZONE");
+@@ -1387,8 +1402,10 @@
+         if (event_type == 0x600) { /* SDL_JOYAXISMOTION */
+             const uint8_t *data = (const uint8_t *)e;
+             int16_t value;
+-            memcpy(&value, data + 16, sizeof value);
+-            if (data[12] == 2) rgds_stick_x = value;
++            memcpy(&value, data + 16, sizeof value);
++            if (data[12] < 4)
++                __atomic_store_n(&rgds_cpad_axes[data[12]], value, __ATOMIC_RELAXED);
++            if (data[12] == 2) rgds_stick_x = value;
+             else if (data[12] == 3) rgds_stick_y = value;
+         }
+     }
+@@ -1392,9 +1409,16 @@
+             else if (data[12] == 3) rgds_stick_y = value;
+         }
+     }
+-    if (ok) rgds_analog_tick();
+-    if (r && e && ok) {
+-        resume_saw_event(e);
++    if (ok) rgds_analog_tick();
++    /* With a native Circle Pad patch, retain D-pad buttons but do not let
++     * SDL convert the left analog axes into the DS's digital D-pad. */
++    if (r && e && ok && rgds_cpad_active()) {
++        uint32_t type;
++        memcpy(&type, e, 4);
++        if (type == 0x600 && ((const uint8_t *)e)[12] < 2) return 0;
++    }
++    if (r && e && ok) {
++        resume_saw_event(e);
+         if (pacing_lowlat) lowlat_saw_event(e);      /* DraStic's fast-forward on or off (low latency) */
+         if (menu_event(e)) return 0;                 /* the menu button: the in-game menu (menu.c), not DraStic's */
+     }
+--- a/src/ra.c
++++ b/src/ra.c
+@@ -19,7 +19,8 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
+-#include <strings.h>
++#include <strings.h>
++#include <math.h>
+ #include <dirent.h>
+ #include <sys/mman.h>
+ #include <sys/stat.h>
+@@ -69,7 +70,59 @@
+ static volatile int game_loaded, scanning, logged_in, load_started;
+ static char rom_path[1024], user[128], pass[256];
+ static uint8_t rom_hdr[0x160];
+-static int frames;
++static int frames;
++/* RG DS optional Circle Pad patch mailbox, after shocoman / ds-emu-dac's
++ * emulator-ready game hook has been installed. The RTC relay is not needed:
++ * the emulated ARM9 hook reads shared main RAM at 0x027FFDF0.
++ * This mode never writes to an unpatched game unless explicitly enabled. */
++int rgds_cpad_active(void);
++void rgds_cpad_sticks(int16_t out[4]);
++static int rgds_cpad_deadzone = -1, rgds_cpad_sensitivity = 100;
++static int rgds_cpad_extended = -1;
++static void rgds_cpad_channel(float x, float y, int8_t *ox, int8_t *oy) {
++    float m = sqrtf(x * x + y * y), dz = rgds_cpad_deadzone / 100.0f;
++    if (m <= dz || m == 0.0f) { *ox = 0; *oy = 0; return; }
++    float r = fminf(1.0f, (m - dz) / (1.0f - dz)) / m;
++    r *= rgds_cpad_sensitivity / 100.0f;
++    int xx = (int)lroundf(x * r * 127.0f), yy = (int)lroundf(y * r * 127.0f);
++    if (xx < -127) xx = -127; if (xx > 127) xx = 127;
++    if (yy < -127) yy = -127; if (yy > 127) yy = 127;
++    *ox = (int8_t)xx; *oy = (int8_t)yy;
++}
++static void rgds_cpad_store(void) {
++    if (!ram || !rgds_cpad_active()) return;
++    /* Header check prevents writes to a stale or wrong mapped memory view. */
++    if (memcmp((const void *)(ram + HDR_OFF), rom_hdr, 0x40)) return;
++    if (rgds_cpad_deadzone < 0) {
++        const char *d = getenv("DSFLIP_ANALOG_DEADZONE");
++        rgds_cpad_deadzone = d ? atoi(d) : 20;
++        if (rgds_cpad_deadzone < 0 || rgds_cpad_deadzone > 60) rgds_cpad_deadzone = 20;
++        d = getenv("DSFLIP_ANALOG_SENSITIVITY");
++        if (d) { int n = atoi(d); if (n >= 25 && n <= 250) rgds_cpad_sensitivity = n; }
++        d = getenv("DSFLIP_CPAD_LAYOUT");
++        rgds_cpad_extended = d && !strcmp(d, "extended");
++    }
++    int16_t ax[4]; rgds_cpad_sticks(ax);
++    int8_t lx, ly, rx = 0, ry = 0;
++    rgds_cpad_channel(ax[0] / 32768.0f, -ax[1] / 32768.0f, &lx, &ly);
++    if (rgds_cpad_active() == 2)
++        rgds_cpad_channel(ax[2] / 32768.0f, -ax[3] / 32768.0f, &rx, &ry);
++    /* 0x027FFDF0 aliases the main RAM 4 MB offset 0x3FFDF0. */
++    volatile uint8_t *p = ram + 0x3ffdf0;
++    p[0] = (uint8_t)lx; p[1] = (uint8_t)ly; p[2] = 0; p[3] = 0;
++    p[4] = 0; /* ZL/ZR: not mapped; retain normal L2/R2 mappings */
++    if (rgds_cpad_extended) {
++        /* Metroid-style extended relay: nub X/Y are signed 16-bit at +6/+8. */
++        int16_t nx = (int16_t)rx * 256, ny = (int16_t)ry * 256;
++        p[5] = 0; p[6] = (uint8_t)nx; p[7] = (uint8_t)(nx >> 8);
++        p[8] = (uint8_t)ny; p[9] = (uint8_t)(ny >> 8);
++        p[10] = 0; p[11] = 0;
++    } else {
++        /* Generic packed relay: low byte flags, nub X/Y in next two bytes. */
++        p[5] = (uint8_t)rx; p[6] = (uint8_t)ry; p[7] = 0;
++        p[8] = 0; p[9] = 0; p[10] = 0; p[11] = 0;
++    }
++}
+ 
+ int audio_sfx_load(const char *path);   /* audio.c */
+ void audio_sfx_play(void);
+@@ -735,8 +788,8 @@
+ void ra_frame(void) {
+     frames++;
+     if (frames == 1) ra_start();
+-    if (!rc) return;
+-    /* the cart header is copied into RAM at boot: look once the game is running, retry every ~2 s */
++    if (!rc && (!rgds_cpad_active() || !rom_hdr[0x0c])) return;
++    /* the cart header is copied into RAM at boot: look once the game is running, retry every ~2 s */
+     if (!ram && !scanning && frames >= 90 && frames % 120 == 90) {
+         scanning = 1;
+         pthread_t t; pthread_attr_t at; pthread_attr_init(&at); pthread_attr_setdetachstate(&at, PTHREAD_CREATE_DETACHED);
+@@ -743,7 +796,9 @@
+         if (pthread_create(&t, &at, scan_thread, 0)) scanning = 0; else pthread_setname_np(t, "dsf-ramscan");
+         pthread_attr_destroy(&at);
+     }
+-    /* load the game only once DS RAM is found, so rc_client validates the achievement set against real memory
++    if (rgds_cpad_active() && ram) rgds_cpad_store();
++    if (!rc) return; /* CPAD does not require RetroAchievements sign-in. */
++    /* load the game only once DS RAM is found, so rc_client validates the achievement set against real memory
+      * (loading before the async scan finished disabled every achievement with "Invalid address"). Fall back to
+      * loading anyway after ~15 s so a game whose RAM we never find at least identifies. */
+     if (logged_in && !load_started && (ram || frames > 900)) {
