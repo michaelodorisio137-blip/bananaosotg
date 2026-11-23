@@ -180,7 +180,7 @@ if not cpad_file.is_file() or "rgds_cpad_store" not in cpad_file.read_text():
 
 # mGBA experimental viewport core integrity: normal mGBA retained byte-for-byte
 # in its original build, and the new 320x204 core has its own name.
-if '"mgba_expanded", "mGBA Expanded 320x204 (experimental)"' not in patched("ui/src/settings.cpp"):
+if '"mgba_expanded", "NEW - mGBA Expanded 320x204"' not in patched("ui/src/settings.cpp"):
     sys.exit("Experimental mGBA core selector missing")
 mgba_mk = patched("buildroot/package/libretro-mgba/libretro-mgba.mk")
 for token in ("mgba_original_libretro.so", "mgba_expanded_libretro.so", "LIBRETRO_MGBA_POST_BUILD_HOOKS"):
@@ -194,7 +194,7 @@ ui = patched("ui/src/settings.cpp")
 for system, label in (("gb", "Game Boy"), ("gbc", "Game Boy Color")):
     prefix = '{ "' + system + '", "' + label + '", {'
     if prefix not in ui or not any(
-        '"mgba_expanded", "mGBA Expanded 320x204 (experimental)"' in line
+        '"mgba_expanded", "NEW - mGBA Expanded 320x204"' in line
         for line in ui.splitlines() if prefix in line
     ):
         sys.exit("mGBA Expanded selection missing for "+label)
