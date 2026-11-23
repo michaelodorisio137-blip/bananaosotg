@@ -77,7 +77,7 @@ static mColor rgdsGBBorder[RGDS_GB_EXT_W * RGDS_GB_EXT_H];
 static bool rgdsGBCanExtend(void) {
     if (!core || core->platform(core) != mPLATFORM_GB) return false;
     const struct GB* gb = (const struct GB*) core->board;
-    return gb && !(gb->model & GB_MODEL_SGB);
+    return gb != NULL;  /* ordinary GB, SGB-enhanced GB, and GBC */
 }
 
 static void rgdsGBRenderBorder(const mColor* native) {
@@ -124,10 +124,15 @@ static void rgdsGBRenderBorder(const mColor* native) {
     }
     /* The actual Game Boy LCD pixels must take priority over the synthetic
        offscreen background, preserving native sprites, window and effects. */
+    /* If a GB cartridge auto-selected Super Game Boy, mGBA may place the
+       true 160x144 LCD image at 48,40 inside its 256x224 border. The
+       expanded core replaces that border, not the actual LCD pixels. */
+    const bool sgbFrame = (gb->model & GB_MODEL_SGB) && gb->video.sgbBorders;
+    const mColor* nativeLCD = native + (sgbFrame ? 40 * VIDEO_WIDTH_MAX + 48 : 0);
     for (int y = 0; y < GB_VIDEO_VERTICAL_PIXELS; ++y) {
         memcpy(rgdsGBBorder +
                (y + RGDS_GB_INSET_Y) * RGDS_GB_EXT_W + RGDS_GB_INSET_X,
-               native + y * VIDEO_WIDTH_MAX,
+               nativeLCD + y * VIDEO_WIDTH_MAX,
                GB_VIDEO_HORIZONTAL_PIXELS * sizeof(mColor));
     }
 }
@@ -199,7 +204,7 @@ if new_callback not in s:
 p.write_text(s)
 
 print("GB/GBC native LCD preserved and centred in a 320x204 VRAM-tilemap border.")
-print("Super Game Boy existing 256x224 border path unchanged; no GB timing constants widened.")
+print("SGB-enhanced titles also show the expanded framebuffer; no GB timing constants widened.")
 
 
 # Give the experimental GB/GBC/GBA core its own libretro identity. RetroArch
