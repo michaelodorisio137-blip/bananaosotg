@@ -1,47 +1,48 @@
 #!/bin/bash
-# AzeezOS / RG DS GB+GBC expanded-viewport installer. Port script.
-# Installs to writable SD data and selects the experimental core for GB and GBC.
+# AzeezOS original RG DS: install expanded shared GB/GBC mGBA core from SD.
+# Never modifies the system partition or GBA emulator selection.
 set -eu
 DIR="$(cd "$(dirname "$0")" && pwd)"
 SRC="$DIR/AzeezGBViewport/mgba_expanded_libretro.so"
 DST="/data/retroarch/cores/mgba_expanded_libretro.so"
 SETTINGS="/data/banana/settings.conf"
 LOG="/data/banana/gb-gbc-viewport.log"
-mkdir -p /data/banana /data/retroarch/cores
-if [ ! -s "$SRC" ]; then
-  printf 'FAILED: experimental GB/GBC core is missing from %s\n' "$SRC" > "$LOG"
+STATUS="$DIR/AzeezGBViewport/INSTALL-STATUS.txt"
+mkdir -p /data/banana /data/retroarch/cores "$DIR/AzeezGBViewport"
+fail() {
+  printf 'GB/GBC viewport installation FAILED: %s\n' "$1" | tee "$LOG" "$STATUS"
   exit 1
-fi
+}
+[ -s "$SRC" ] || fail "Experimental GB/GBC core is missing: $SRC"
+# Unlike the earlier experimental package, this one has an independent core
+# identity, so the menu does not reuse normal mGBA's core options.
+grep -q 'mGBA Expanded RGDS' "$SRC" || fail "Wrong/older mGBA core; download the revised package."
 if [ ! -f "$SETTINGS" ]; then
+  [ -f /etc/banana/settings.conf ] || fail "System settings template not found"
   cp /etc/banana/settings.conf "$SETTINGS"
 fi
-# A real, separately identified expanded core. Reject the old build which
-# used standard mGBA's options identity and confused on-device diagnostics.
-if ! grep -aq 'mGBA Expanded RGDS' "$SRC"; then
-  printf 'FAILED: older package had standard mGBA identity; refusing to install.\n' > "$LOG"
-  exit 1
+if [ ! -e /data/banana/settings.gb-gbc-before-expanded.conf ]; then
+  cp "$SETTINGS" /data/banana/settings.gb-gbc-before-expanded.conf
 fi
-cp "$SRC" "$DST.new"
+cp "$SRC" "$DST.new" || fail "Could not copy the expanded core to SD."
 mv -f "$DST.new" "$DST"
-# Preserve every other existing config value, including the user's GBA core.
+# The launchers read these per-system selectors on each game start.
 sed -i -e '/^[[:space:]]*core\.gb[[:space:]]*=/d' \
        -e '/^[[:space:]]*core\.gbc[[:space:]]*=/d' "$SETTINGS"
 printf '\ncore.gb = mgba_expanded\ncore.gbc = mgba_expanded\n' >> "$SETTINGS"
 sync
-if ! grep -Eq '^core\\.gb = mgba_expanded
- "$SETTINGS" ||
-   ! grep -Eq '^core\\.gbc = mgba_expanded
- "$SETTINGS" ||
-   ! test -s "$DST"; then
-  printf 'FAILED: GB/GBC emulator selection was not saved correctly.\n' > "$LOG"
-  exit 1
-fi
-printf 'AzeezOS GB/GBC expanded viewport: INSTALLED\n' > "$LOG"
-printf 'Game Boy selected core: mgba_expanded\nGame Boy Color selected core: mgba_expanded\n' >> "$LOG"
-printf 'Installed shared core: %s\n' "$DST" >> "$LOG"
-printf 'Core identity: mGBA Expanded RGDS\nTarget video size: 320x204\n' >> "$LOG"
-printf 'GBA core selection: unchanged\n' >> "$LOG"
-printf 'The firmware UI may retain old core names until updated.\n' >> "$LOG"
-printf 'The new core is loaded by the existing GB and GBC launch scripts.\n' >> "$LOG"
-cp "$LOG" "$DIR/AzeezGBViewport/INSTALL-STATUS.txt"
+grep -q '^core\.gb = mgba_expanded$' "$SETTINGS" || fail "GB core setting not saved."
+grep -q '^core\.gbc = mgba_expanded$' "$SETTINGS" || fail "GBC core setting not saved."
+[ -s "$DST" ] || fail "Expanded libretro core missing after install."
+{
+  echo "AzeezOS GB/GBC viewport: INSTALLED"
+  echo "Game Boy = mGBA Expanded RGDS"
+  echo "Game Boy Color = mGBA Expanded RGDS"
+  echo "Video output for both = 320x204 (GB/GBC original 160x144 centred)"
+  echo "Installed file: $DST"
+  echo "GBA core selection: unchanged"
+  echo "The stock firmware's emulator Settings menu won't list this core until the OS UI is updated."
+  echo "Launch GB or GBC games from the game library as usual."
+} > "$LOG"
+cp "$LOG" "$STATUS"
 exit 0
