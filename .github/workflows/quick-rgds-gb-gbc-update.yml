@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - '.github/workflows/quick-rgds-gb-gbc-update.yml'
+      - 'tools/quick-gb-gbc-firmware-patch.py'
 
 permissions:
   contents: read
@@ -57,14 +58,12 @@ jobs:
           ORIGINAL=$(dirname "$(head -n 1 /tmp/rootfs-image)")
           rm -f "$ORIGINAL/rootfs.squashfs"
           mksquashfs rootfs "$ORIGINAL/rootfs.squashfs" -comp xz -b 131072 -noappend -processors 4 >/tmp/mksquashfs.log
-          cp "$ORIGINAL/sha256sums" "$ORIGINAL/sha256sums.before" || :
           printf '0.5.3.7-newgbgbc1\n' > "$ORIGINAL/VERSION"
           (cd "$ORIGINAL"; sha256sum Image *.dtb rootfs.squashfs > sha256sums)
           cp "$ORIGINAL/rootfs.squashfs" /tmp/quick-verify.squashfs
           unsquashfs -cat /tmp/quick-verify.squashfs usr/libexec/banana/data-layout | grep -q 'NEW GB GBC Expanded'
           mkdir -p out
-          tar -cf out/banana-rgds-0.5.3.7-newgbgbc1.update.tar -C original "$(basename "$ORIGINAL")" \
-            --exclude='*.before'
+          tar -cf out/banana-rgds-0.5.3.7-newgbgbc1.update.tar -C original "$(basename "$ORIGINAL")"
           # Validate firmware updater's required internal members and hashes.
           tar -tf out/banana-rgds-0.5.3.7-newgbgbc1.update.tar | grep -q '/rootfs.squashfs'
           (cd "$ORIGINAL"; sha256sum -c sha256sums)
