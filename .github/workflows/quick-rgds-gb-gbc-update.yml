@@ -1,0 +1,79 @@
+name: Build QUICK AzeezOS NEW GB GBC Firmware Update
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/quick-rgds-gb-gbc-update.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  update:
+    name: Repack verified RG DS firmware as native updater
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout firmware update scripts
+        uses: actions/checkout@v4
+      - name: Install squashfs update repacking tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y squashfs-tools
+      - name: Download complete successfully built RG DS firmware
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p base
+          gh run download 45078908030 \
+            -R michaelodorisio137-blip/bananaosotg \
+            -n BananaOS-RGDS-USB-OTG \
+            -D base
+          find base -type f -name 'banana-rgds-*.update.tar' -size +100M -print | tee /tmp/base-updates
+          test -s /tmp/base-updates
+      - name: Unpack existing bootable firmware update
+        run: |
+          mkdir original rootfs
+          tar -xf "$(head -n 1 /tmp/base-updates)" -C original
+          find original -type f -name rootfs.squashfs | head -1 | tee /tmp/rootfs-image
+          test -s /tmp/rootfs-image
+          unsquashfs -d rootfs "$(cat /tmp/rootfs-image)"
+          test -s rootfs/usr/lib/libretro/mgba_expanded_libretro.so
+          file rootfs/usr/lib/libretro/mgba_expanded_libretro.so
+          # This firmware-built core is compiled against the real RG DS libc.
+          # Do not replace with the host-cross-compiled SD-card test core.
+      - name: Activate expanded GB and GBC on existing data partition
+        run: |
+          python3 tools/quick-gb-gbc-firmware-patch.py rootfs
+          sh -n rootfs/usr/libexec/banana/data-layout
+          sh -n rootfs/usr/libexec/banana/run-retroarch
+          sh -n rootfs/usr/libexec/banana/run-bananafront
+          grep -q 'NEW GB GBC Expanded' rootfs/usr/libexec/banana/data-layout
+          python3 tools/quick-gb-gbc-firmware-patch.py --verify rootfs
+      - name: Rebuild squashfs and standard RG DS update tarball
+        run: |
+          set -eu
+          ORIGINAL=$(dirname "$(head -n 1 /tmp/rootfs-image)")
+          rm -f "$ORIGINAL/rootfs.squashfs"
+          mksquashfs rootfs "$ORIGINAL/rootfs.squashfs" -comp xz -b 131072 -noappend -processors 4 >/tmp/mksquashfs.log
+          cp "$ORIGINAL/sha256sums" "$ORIGINAL/sha256sums.before" || :
+          printf '0.5.3.7-newgbgbc1\n' > "$ORIGINAL/VERSION"
+          (cd "$ORIGINAL"; sha256sum Image *.dtb rootfs.squashfs > sha256sums)
+          cp "$ORIGINAL/rootfs.squashfs" /tmp/quick-verify.squashfs
+          unsquashfs -cat /tmp/quick-verify.squashfs usr/libexec/banana/data-layout | grep -q 'NEW GB GBC Expanded'
+          mkdir -p out
+          tar -cf out/banana-rgds-0.5.3.7-newgbgbc1.update.tar -C original "$(basename "$ORIGINAL")" \
+            --exclude='*.before'
+          # Validate firmware updater's required internal members and hashes.
+          tar -tf out/banana-rgds-0.5.3.7-newgbgbc1.update.tar | grep -q '/rootfs.squashfs'
+          (cd "$ORIGINAL"; sha256sum -c sha256sums)
+          sha256sum out/*.update.tar > out/SHA256SUMS.txt
+          ls -lh out/*
+      - name: Upload actual RG DS firmware updater
+        uses: actions/upload-artifact@v4
+        with:
+          name: AzeezOS-NEW-GB-GBC-Firmware-Update
+          path: out/*
+          compression-level: 0
+          retention-days: 14
