@@ -44,13 +44,13 @@ if new not in s:
 ui=root/"ui/src/settings.cpp"
 s=ui.read_text()
 before='{ "gba", "Game Boy Advance", { { "gpsp", "gpSP" }, { "mgba", "mGBA" },'
-after='{ "gba", "Game Boy Advance", { { "gpsp", "gpSP" }, { "mgba", "mGBA" }, { "mgba_expanded", "mGBA Expanded 320x204 (experimental)" },'
+after='{ "gba", "Game Boy Advance", { { "gpsp", "gpSP" }, { "mgba", "mGBA" }, { "mgba_expanded", "NEW - mGBA Expanded 320x204" },'
 if after not in s:
     if s.count(before)!=1: sys.exit("Game Boy Advance core selection list changed")
     s=s.replace(before,after,1)
 for system in ("gbc", "gb"):
     before = '{ "' + system + '", "' + ("Game Boy Color" if system == "gbc" else "Game Boy") + '", { { "gambatte", "Gambatte" }, { "mgba", "mGBA" },'
-    after = before + ' { "mgba_expanded", "mGBA Expanded 320x204 (experimental)" },'
+    after = before + ' { "mgba_expanded", "NEW - mGBA Expanded 320x204" },'
     if after not in s:
         if s.count(before)!=1: sys.exit("GB/GBC core selection list changed: "+system)
         s=s.replace(before, after, 1)
