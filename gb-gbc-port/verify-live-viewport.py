@@ -76,13 +76,16 @@ ident = SystemInfo()
 lib.retro_get_system_info(C.byref(ident))
 assert b"mGBA Expanded RGDS" == ident.library_name, ident.library_name
 
-def make_rom(cgb):
+def make_rom(cgb, sgb=False):
     rom = bytearray(32768)
     # Distinct tiny custom test program; no proprietary retail ROM or BIOS.
     rom[0x100:0x103] = b"\xC3\x50\x01"   # JP $0150
     rom[0x104:0x108] = b"\x7C\xE7\xC0\x00"  # recognized minimal header
     rom[0x134:0x13D] = b"RGDS-TEST"
     rom[0x143] = 0xC0 if cgb else 0x00
+    if sgb:
+        rom[0x146] = 0x03
+        rom[0x14B] = 0x33
     rom[0x147] = 0
     rom[0x148] = 0
     rom[0x149] = 0
@@ -94,20 +97,20 @@ def make_rom(cgb):
     rom[0x150:0x153] = b"\xC3\x50\x01"  # JP $0150
     return C.create_string_buffer(bytes(rom), len(rom))
 
-for cgb in (False, True):
+for name, cgb, sgb in (("GB", False, False), ("GBC", True, False), ("SGB-compatible GB", False, True)):
     captures.clear()
-    rom = make_rom(cgb)
+    rom = make_rom(cgb, sgb)
     info = GameInfo(b"test.gbc" if cgb else b"test.gb", C.cast(rom, C.c_void_p), len(rom), None)
-    assert lib.retro_load_game(C.byref(info)), ("GB" if not cgb else "GBC") + " load failed"
+    assert lib.retro_load_game(C.byref(info)), name + " load failed"
     av = AVInfo()
     lib.retro_get_system_av_info(C.byref(av))
     assert (av.geometry.base_width, av.geometry.base_height) == (320, 204), (cgb, av.geometry.base_width, av.geometry.base_height)
     assert (av.geometry.max_width, av.geometry.max_height) == (320, 204), (cgb, av.geometry.max_width, av.geometry.max_height)
     for _ in range(3):
         lib.retro_run()
-    assert captures, "No video produced for " + ("GBC" if cgb else "GB")
+    assert captures, "No video produced for " + name
     assert all((w, h) == (320, 204) for w, h, pitch in captures), (cgb, captures)
     assert all(pitch == 320 * 4 or pitch == 320 * 2 for w, h, pitch in captures), (cgb, captures)
-    print(("GBC" if cgb else "GB") + ": core mGBA Expanded RGDS, 320x204 video verified")
+    print(name + ": core mGBA Expanded RGDS, 320x204 video verified")
     lib.retro_unload_game()
 lib.retro_deinit()
