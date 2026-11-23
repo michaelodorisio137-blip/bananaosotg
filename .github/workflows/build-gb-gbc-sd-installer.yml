@@ -47,13 +47,18 @@ jobs:
           file "$(head -n 1 /tmp/arm-cores)" | tee /tmp/architecture
           grep -qi 'ARM aarch64' /tmp/architecture
           aarch64-linux-gnu-readelf -h "$(head -n 1 /tmp/arm-cores)" | grep -q 'AArch64'
+      - name: Check NEW port installer shell syntax
+        run: |
+          bash -n 'gb-gbc-port/NEW - GB-GBC Expanded Viewport.sh'
+          bash -n gb-gbc-port/Restore-GB-GBC-Gambatte.sh
+          grep -q 'NEW - GB/GBC Expanded Viewport' 'gb-gbc-port/NEW - GB-GBC Expanded Viewport.sh'
       - name: Package simple RG DS SD installer
         run: |
           mkdir -p dist/roms/ports/AzeezGBViewport
           cp "$(head -n 1 /tmp/arm-cores)" dist/roms/ports/AzeezGBViewport/mgba_expanded_libretro.so
-          cp gb-gbc-port/Enable-GB-GBC-Expanded.sh dist/roms/ports/
+          cp 'gb-gbc-port/NEW - GB-GBC Expanded Viewport.sh' dist/roms/ports/
           cp gb-gbc-port/Restore-GB-GBC-Gambatte.sh dist/roms/ports/
-          echo 'Extract roms/ into the ROOT of your RG DS data SD card. Open Ports > Enable-GB-GBC-Expanded. It installs mGBA Expanded to /data/retroarch/cores and selects it for GB/GBC. GBA is unchanged. Open Ports > Restore-GB-GBC-Gambatte to reverse. The full firmware build is needed for the new Emulator selector entries to appear.' > dist/README.txt
+          echo 'Extract roms/ into the ROOT of your RG DS data SD card. You MUST run the item in Ports called NEW - GB-GBC Expanded Viewport. Simply copying the ZIP contents will NOT activate the core. It installs mGBA Expanded to /data/retroarch/cores and selects it for GB/GBC. GBA is unchanged. Open Ports > Restore-GB-GBC-Gambatte to reverse. The full firmware build is needed for the new Emulator selector entries to appear.' > dist/README.txt
           (cd dist && zip -qr ../AzeezOS-GB-GBC-Viewport-SD-Installer.zip roms README.txt)
           ls -lah AzeezOS-GB-GBC-Viewport-SD-Installer.zip
       - name: Upload installable AArch64 package
