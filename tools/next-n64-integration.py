@@ -21,6 +21,9 @@ rep("ui/src/settings.cpp",'{ "N64 3-point", "Bilinear" }, { "3point", "standard"
 rep("ui/src/settings_defaults.cpp",
     'const char* const N64_TEXTURE_FILTER[] = { "3point", "standard", nullptr };',
     'const char* const N64_TEXTURE_FILTER[] = { "3point", "standard", "nearest", nullptr };')
+rep("ui/src/settings.cpp",
+    'items.back().hints = { "Original N64-style three-point texture sampling.", "Four-point PC-style bilinear sampling." };',
+    'items.back().hints = { "Original N64-style three-point texture sampling.", "Four-point PC-style bilinear sampling.", "Nearest-neighbor: one texture texel per sample without blending." };')
 rep("system/rootfs/usr/libexec/banana/run-retroarch",
     'case $(setting rgds_n64_texfilter) in standard) t=standard ;; *) t=3point ;; esac',
     'case $(setting rgds_n64_texfilter) in standard) t=standard ;; nearest) t=nearest ;; *) t=3point ;; esac')
