@@ -1,0 +1,139 @@
+name: AzeezOS N64 Nearest Texture OTA Release
+on:
+  workflow_dispatch:
+  push:
+    branches: [gb-gbc-goomba-viewport]
+    paths:
+      - '.github/workflows/azeezos-n64-nearest-ota.yml'
+      - 'tools/next-n64-source.py'
+      - 'tools/next-n64-integration.py'
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: azeez-n64-nearest-release
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      BR2_DL_DIR: ${{ github.workspace }}/dl
+    steps:
+      - name: Checkout patch repository
+        uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          sudo apt-get update -qq
+          sudo apt-get install -y build-essential bc bison flex libssl-dev libelf-dev unzip rsync cpio file wget python3-dev swig libgnutls28-dev squashfs-tools
+      - name: Checkout BananaLinux upstream
+        uses: actions/checkout@v4
+        with:
+          repository: JorreFog/BananaLinux
+          ref: main
+          path: BananaLinux
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Integrate full AzeezOS and N64 nearest core
+        run: |
+          set -eu
+          python3 -m py_compile apply.py tools/next-n64-integration.py tools/next-n64-source.py
+          python3 apply.py BananaLinux
+          python3 tools/next-n64-integration.py BananaLinux
+          python3 verify-preservation.py BananaLinux
+          grep -q 'Nearest neighbor (NEW)' BananaLinux/ui/src/settings.cpp
+          grep -q '"nearest"' BananaLinux/ui/src/settings_defaults.cpp
+          grep -q 'nearest) t=nearest' BananaLinux/system/rootfs/usr/libexec/banana/run-retroarch
+          grep -q 'next-n64-source.py' BananaLinux/buildroot/package/libretro-mupen64plus-next/libretro-mupen64plus-next.mk
+          sh -n BananaLinux/system/rootfs/usr/libexec/banana/run-retroarch
+          git -C BananaLinux diff --check
+      - name: Restore Buildroot cache
+        uses: actions/cache/restore@v4
+        with:
+          path: dl
+          key: otg-dl-${{ hashFiles('apply.py', 'usb-sd2') }}
+          restore-keys: otg-dl-
+      - name: Compile AArch64 GLideN64 and Settings menu
+        run: |
+          set -eu
+          make -C BananaLinux rgds
+          CORE=BananaLinux/output/rgds/target/usr/lib/libretro/mupen64plus_next_libretro.so
+          UI=BananaLinux/output/rgds/target/usr/bin/banana-ui
+          test -s "$CORE"; test -s "$UI"
+          file "$CORE" "$UI"
+          strings "$CORE" | grep -q nearest
+          strings "$UI" | grep -q 'Nearest neighbor (NEW)'
+      - name: Preserve native N64 build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: AzeezOS-N64-Native-Binaries
+          retention-days: 14
+          compression-level: 0
+          path: |
+            BananaLinux/output/rgds/target/usr/lib/libretro/mupen64plus_next_libretro.so
+            BananaLinux/output/rgds/target/usr/bin/banana-ui
+      - name: Download existing working consolidated RG DS firmware
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p base
+          gh run download 45142780301 -R michaelodorisio137-blip/bananaosotg -n AzeezOS-Next-Test-Firmware -D base
+          find base -type f -name '*.update.tar' -size +100M -print | tee /tmp/base-update
+          test -s /tmp/base-update
+      - name: Install N64 binaries into working root filesystem
+        run: |
+          set -eu
+          mkdir original rootfs
+          tar -xf "$(head -n 1 /tmp/base-update)" -C original
+          find original -type f -name rootfs.squashfs | head -1 | tee /tmp/rootfs-path
+          test -s /tmp/rootfs-path
+          unsquashfs -d rootfs "$(cat /tmp/rootfs-path)"
+          test -s rootfs/usr/lib/libretro/mgba_expanded_libretro.so
+          test -s rootfs/usr/share/banana/themes/rgds-ds-dark.json
+          test -s rootfs/usr/share/libretro/shaders/glsl/rgds/sharp-image-adjust.glslp
+          cp BananaLinux/output/rgds/target/usr/lib/libretro/mupen64plus_next_libretro.so rootfs/usr/lib/libretro/mupen64plus_next_libretro.so
+          cp BananaLinux/output/rgds/target/usr/bin/banana-ui rootfs/usr/bin/banana-ui
+          printf '0.5.3.8-n64-nearest1\n' > rootfs/etc/banana/version
+          python3 tools/quick-gb-gbc-firmware-patch.py --verify rootfs
+          sh -n rootfs/usr/libexec/banana/run-retroarch
+          sh -n rootfs/usr/libexec/banana/update
+          strings rootfs/usr/bin/banana-ui | grep -q 'Nearest neighbor (NEW)'
+      - name: Create validated OTA firmware package and checksums
+        run: |
+          set -eu
+          ORIGINAL="$(dirname "$(head -n 1 /tmp/rootfs-path)")"
+          rm -f "$ORIGINAL/rootfs.squashfs"
+          mksquashfs rootfs "$ORIGINAL/rootfs.squashfs" -comp xz -b 131072 -noappend -processors 4 >/tmp/mksquashfs.log
+          printf '0.5.3.8-n64-nearest1\n' > "$ORIGINAL/VERSION"
+          (cd "$ORIGINAL"; sha256sum Image *.dtb rootfs.squashfs > sha256sums)
+          mkdir -p out
+          tar -cf out/banana-rgds-0.5.3.8-n64-nearest1.update.tar -C original "$(basename "$ORIGINAL")"
+          (cd "$ORIGINAL"; sha256sum -c sha256sums)
+          tar -tf out/*.update.tar | grep -q '/rootfs.squashfs'
+          sha256sum out/*.update.tar > out/SHA256SUMS-rgds.txt
+          ls -lh out/*
+      - name: Upload installable OTA file
+        uses: actions/upload-artifact@v4
+        with:
+          name: AzeezOS-N64-Nearest-OTA-Update
+          retention-days: 30
+          compression-level: 0
+          path: out/*
+      - name: Publish AzeezOS release to OTA updater feed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > /tmp/notes.txt <<'EOF'
+          AzeezOS native RG DS update: Mupen64Plus-Next adds real GLideN64 nearest-neighbor 3D texture sampling.
+          Existing bilinear and N64 three-point filters remain available.
+          Select Settings > Other systems > Picture & sound > Nintendo 64 textures.
+          Preserves the expanded GB/GBC viewport, DS themes, and existing games and saves.
+          Experimental release, test on actual RG DS hardware.
+          EOF
+          gh release create v0.5.3.8-n64-nearest1 \
+            out/banana-rgds-0.5.3.8-n64-nearest1.update.tar out/SHA256SUMS-rgds.txt \
+            --repo michaelodorisio137-blip/bananaosotg \
+            --title "AzeezOS RG DS 0.5.3.8 - N64 Native Nearest Texture Filtering" \
+            --notes-file /tmp/notes.txt --prerelease
+          gh release view v0.5.3.8-n64-nearest1 --repo michaelodorisio137-blip/bananaosotg
