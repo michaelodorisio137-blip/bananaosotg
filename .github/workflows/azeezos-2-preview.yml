@@ -61,6 +61,7 @@ jobs:
           python3 tools/mods/integrate.py BananaLinux
           python3 tools/ai-dev/integrate.py BananaLinux
           python3 tools/ai-cheats/integrate_nds.py BananaLinux
+          python3 tools/ai-cheats/integrate_maps.py BananaLinux
           g++ -std=c++17 -Wall -Wextra -Werror tools/mods/patch_test.cpp -lz -o /tmp/mod-patch-test
           /tmp/mod-patch-test
           g++ -std=c++17 -Wall -Wextra -Werror tools/mods/install_test.cpp -lz -o /tmp/mod-install-test
