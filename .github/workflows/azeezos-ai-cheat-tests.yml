@@ -18,3 +18,7 @@ jobs:
         run: |
           printf '#include "ram_scan.h"\n' | g++ -std=c++17 -Wall -Wextra -Werror -pedantic -fsanitize=address,undefined -DAZEEZ_RAM_SCAN_SELFTEST -Itools/ai-cheats -x c++ - -o /tmp/azeez-ram-scan
           /tmp/azeez-ram-scan
+      - name: Compile and run live transport tests
+        run: |
+          g++ -std=c++17 -Wall -Wextra -Werror -pedantic -fsanitize=address,undefined tools/ai-cheats/live_scan_test.cpp -o /tmp/azeez-live-scan
+          /tmp/azeez-live-scan
