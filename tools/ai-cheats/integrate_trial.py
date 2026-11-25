@@ -113,7 +113,7 @@ sub("settings_gamepanel.cpp",'''box("slot",false,18,365,298,48);box("slot",false
 # Clear stale identity before starting any new game; never send trial writes through read-only CompLink.
 sub("main.cpp","gameRomPath = rom;","unlink(\"/run/banana/azeez-cheat-session\");\n        gameRomPath = rom;")
 sub("main.cpp","if(!q.empty() && !compLink.send(q)) pipeWrite(cmdFd,q.data(),q.size());",'''if(!q.empty()){
-                    if(q.compare(0,18,"WRITE_CORE_MEMORY ")==0) {
+                    if(q.rfind("WRITE_CORE_MEMORY ",0)==0) {
                         if(!compLink.attached())pipeWrite(cmdFd,q.data(),q.size());
                     }else if(!compLink.send(q))pipeWrite(cmdFd,q.data(),q.size());
                 }''')
