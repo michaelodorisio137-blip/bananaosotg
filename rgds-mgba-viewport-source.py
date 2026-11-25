@@ -220,3 +220,20 @@ if new not in s:
     s=s.replace(old,new,1)
 p.write_text(s)
 print("Unique libretro core identity: mGBA Expanded RGDS (independent options).")
+
+# GBA bitmap modes use fixed hardware VRAM dimensions, not the widened LCD
+# output geometry. Preserve native row pitch and sampling bounds in modes 3/4.
+# Mode 5 already uses its independent 160x128 dimensions; leave it intact.
+p = root / "src/gba/renderers/software-bg.c"
+s = p.read_text()
+start = s.index("void GBAVideoSoftwareRendererDrawBackgroundMode3(")
+end = s.index("void GBAVideoSoftwareRendererDrawBackgroundMode5(", start)
+bitmap = s[start:end]
+if "GBA_VIDEO_HORIZONTAL_PIXELS" in bitmap or "GBA_VIDEO_VERTICAL_PIXELS" in bitmap:
+    if bitmap.count("GBA_VIDEO_HORIZONTAL_PIXELS") != 8 or bitmap.count("GBA_VIDEO_VERTICAL_PIXELS") != 4:
+        sys.exit("Unexpected mode 3/4 bitmap source; refusing unsafe patch")
+    bitmap = bitmap.replace("GBA_VIDEO_HORIZONTAL_PIXELS", "240").replace("GBA_VIDEO_VERTICAL_PIXELS", "160")
+    p.write_text(s[:start] + bitmap + s[end:])
+assert "GBA_VIDEO_HORIZONTAL_PIXELS" not in bitmap
+assert "GBA_VIDEO_VERTICAL_PIXELS" not in bitmap
+print("PASS: mode 3/4 bitmap pitch 240 and bounds 240x160, mode 5 unchanged")
