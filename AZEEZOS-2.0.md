@@ -21,3 +21,9 @@ Next: authenticated build service, per-emulator cheat adapters, exact ROM SHA-25
 4. Mod browser: actual source-backed search, matching ROM revision, download integrity, non-destructive patch installation, restart and revert; do not overwrite original ROMs.
 5. AI development: authenticated build requests, isolated code changes, test logs, signed/verified updates, explicit installation and recovery.
 6. No placeholder tabs or simulated success. A preview artifact is not the finished release; unsupported modes must be clearly identified. 
+
+## Development preview 3
+- Native live-scan page now includes explicit one-shot byte trial, readback, user confirmation, conditional undo, a paged persistent catalog, manual reapply and deletion. Catalog identity is SHA-256 of the exact content file and actual RetroArch core. ZIP container identity is not the decompressed ROM identity.
+- Writes are limited to the same bounded RAM ranges as live scan, RetroArch sessions with an actual session identity, no active network interface and Hardcore off. BananaFront shared memory is read-only, and companion-active games remain excluded. No periodic freeze, DS adapter or automatic AI code execution. Hardware validation remains mandatory.
+- The original production firmware is preserved. Preview 3 patches the existing baseline launcher in place only to add the session identity, and overlays the new UI binary.
+- Native IPS/BPS patch decoding and tests are added separately as the mod installer foundation. No browser, download or game-restart integration yet.
