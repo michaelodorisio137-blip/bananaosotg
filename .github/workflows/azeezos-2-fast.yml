@@ -41,9 +41,10 @@ jobs:
           python3 tools/ai-cheats/integrate_trial.py BananaLinux
           python3 tools/mods/integrate.py BananaLinux
           python3 tools/ai-dev/integrate.py BananaLinux
+          python3 tools/ai-cheats/integrate_nds.py BananaLinux
           python3 tools/ai-cheats/launcher_identity.py BananaLinux/system/rootfs
           sh -n BananaLinux/system/rootfs/usr/libexec/banana/run-retroarch
-          for f in settings_gamepanel.cpp main.cpp library.cpp settings.cpp settings_defaults.cpp; do
+          for f in settings_gamepanel.cpp main.cpp library.cpp settings.cpp settings_defaults.cpp nds/overlay.cpp complink.cpp; do
             g++ -std=c++17 -fsyntax-only -IBananaLinux/ui/src -IBananaLinux/ui -IBananaLinux/ui/rnds $(pkg-config --cflags freetype2 libdrm zlib) BananaLinux/ui/src/$f
           done
           git -C BananaLinux diff --check
