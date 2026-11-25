@@ -17,3 +17,7 @@ jobs:
       - run: |
           g++ -std=c++17 -Wall -Wextra -Werror -pedantic -fsanitize=address,undefined tools/mods/patch_test.cpp -lz -o /tmp/mod-patch-test
           /tmp/mod-patch-test
+      - name: Validate installer output and preservation
+        run: |
+          g++ -std=c++17 -Wall -Wextra -Werror -pedantic -fsanitize=address,undefined tools/mods/install_test.cpp -lz -o /tmp/mod-install-test
+          /tmp/mod-install-test
