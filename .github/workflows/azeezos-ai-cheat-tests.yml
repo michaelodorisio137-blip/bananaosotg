@@ -1,0 +1,20 @@
+name: AzeezOS AI cheat engine tests
+on:
+  push:
+    branches: [azeezos-2.0]
+    paths:
+      - 'tools/ai-cheats/**'
+      - '.github/workflows/azeezos-ai-cheat-tests.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  ram-scan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile and run memory search tests
+        run: |
+          g++ -std=c++17 -Wall -Wextra -Werror -pedantic -fsanitize=address,undefined -DAZEEZ_RAM_SCAN_SELFTEST -x c++ tools/ai-cheats/ram_scan.h -o /tmp/azeez-ram-scan
+          /tmp/azeez-ram-scan
