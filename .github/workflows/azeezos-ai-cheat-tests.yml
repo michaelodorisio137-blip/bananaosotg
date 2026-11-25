@@ -16,5 +16,5 @@ jobs:
       - uses: actions/checkout@v4
       - name: Compile and run memory search tests
         run: |
-          g++ -std=c++17 -Wall -Wextra -Werror -pedantic -fsanitize=address,undefined -DAZEEZ_RAM_SCAN_SELFTEST -x c++ tools/ai-cheats/ram_scan.h -o /tmp/azeez-ram-scan
+          printf '#include "ram_scan.h"\n' | g++ -std=c++17 -Wall -Wextra -Werror -pedantic -fsanitize=address,undefined -DAZEEZ_RAM_SCAN_SELFTEST -Itools/ai-cheats -x c++ - -o /tmp/azeez-ram-scan
           /tmp/azeez-ram-scan
