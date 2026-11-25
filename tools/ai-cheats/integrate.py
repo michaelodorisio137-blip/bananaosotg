@@ -73,11 +73,14 @@ sub("main.cpp","settingsView.gameOpen(title, sysName, panelScreen, input.hasTouc
             settingsView.gameScanEnable(outFd>=0 && !companion.active() && !gameComp.active());''')
 sub("main.cpp","if (outFd >= 0)\n\t\t\t{\n\t\t\t\t// the companion's reads",'''if(outFd>=0 && !companion.active() && !gameComp.active()) {
                 auto q=settingsView.gameScanRequest(t);
-                if(!q.empty()) pipeWrite(cmdFd,q.data(),q.size());
+                if(!q.empty() && !compLink.send(q)) pipeWrite(cmdFd,q.data(),q.size());
             }
             if (outFd >= 0 && (companion.active() || gameComp.active()))
             {
                 // the companion's reads''')
+sub("main.cpp","if (companion.active()) companion.feed(rep.data(), rep.size());\n\t\t\t\t\telse",'''if (companion.active()) companion.feed(rep.data(), rep.size());
+                    else if(!gameComp.active()) settingsView.gameScanFeed(rep.data(),rep.size());
+                    else''')
 sub("main.cpp","if (companion.active()) companion.feed(buf, (size_t)n);\n\t\t\t\t\telse",'''if (companion.active()) companion.feed(buf, (size_t)n);
                     else if(!gameComp.active()) settingsView.gameScanFeed(buf,(size_t)n);
                     else''')
