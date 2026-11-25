@@ -5,6 +5,7 @@ on:
     branches: [azeezos-2.0]
     paths:
       - 'tools/azeezos-2-*'
+      - 'tools/ai-cheats/**'
       - '.github/workflows/azeezos-2-preview.yml'
 permissions:
   contents: read
@@ -45,6 +46,9 @@ jobs:
           python3 -m py_compile tools/next-integer-viewport-source.py tools/next-integer-rootfs.py
           python3 tools/azeezos-2-region.py BananaLinux
           python3 tools/azeezos-2-panel.py BananaLinux
+          python3 tools/ai-cheats/integrate.py BananaLinux
+          g++ -std=c++17 -Wall -Wextra -Werror tools/ai-cheats/live_scan_test.cpp -o /tmp/live-scan-test
+          /tmp/live-scan-test
           for f in settings_gamepanel.cpp main.cpp library.cpp settings.cpp settings_defaults.cpp; do
             g++ -std=c++17 -fsyntax-only -IBananaLinux/ui/src -IBananaLinux/ui -IBananaLinux/ui/rnds $(pkg-config --cflags freetype2 libdrm zlib) BananaLinux/ui/src/$f
           done
@@ -96,21 +100,22 @@ jobs:
           python3 tools/quick-gb-gbc-firmware-patch.py --verify rootfs
           cp BananaLinux/output/rgds/target/usr/bin/banana-ui rootfs/usr/bin/banana-ui
           strings rootfs/usr/bin/banana-ui | grep -q 'AI Cheats'
+          strings rootfs/usr/bin/banana-ui | grep -q 'Live RAM search'
           strings rootfs/usr/bin/banana-ui | grep -q 'game_sort'
           strings rootfs/usr/bin/banana-ui | grep -q 'mGBA Maximum Integer (NEW)'
           strings rootfs/usr/bin/banana-ui | grep -q 'Nearest neighbor (NEW)'
           printf '\n# AzeezOS 2.0 library sort\ngame_sort = title\n' >> rootfs/etc/banana/settings.conf
-          printf '2.0.0-dev.1\n' > rootfs/etc/banana/version
+          printf '2.0.0-dev.2\n' > rootfs/etc/banana/version
       - name: Package development preview (not published to OTA feed)
         run: |
           set -eu
           ORIGINAL="$(dirname "$(head -n 1 /tmp/rootfs-path)")"
           rm "$ORIGINAL/rootfs.squashfs"
           mksquashfs rootfs "$ORIGINAL/rootfs.squashfs" -comp xz -b 131072 -noappend -processors 4
-          printf '2.0.0-dev.1\n' > "$ORIGINAL/VERSION"
+          printf '2.0.0-dev.2\n' > "$ORIGINAL/VERSION"
           (cd "$ORIGINAL"; sha256sum Image *.dtb rootfs.squashfs > sha256sums; sha256sum -c sha256sums)
           mkdir -p out
-          tar -cf out/banana-rgds-2.0.0-dev.1.update.tar -C original "$(basename "$ORIGINAL")"
+          tar -cf out/banana-rgds-2.0.0-dev.2.update.tar -C original "$(basename "$ORIGINAL")"
           sha256sum out/*.update.tar > out/SHA256SUMS-rgds.txt
       - uses: actions/upload-artifact@v4
         with:
