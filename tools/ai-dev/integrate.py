@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 from pathlib import Path
 import sys,shutil
-ui=Path(sys.argv[1])/"ui/src"
+root=Path(sys.argv[1])
+ui=root/"ui/src"
+shutil.copyfile(Path(__file__).parent/"stage.py",root/"system/rootfs/usr/libexec/banana/azeez-stage-ai.py")
+for cfg in (root/"buildroot/configs").glob("banana_*_defconfig"):
+    s=cfg.read_text()
+    if "BR2_PACKAGE_LIBOPENSSL_BIN=y" not in s:cfg.write_text(s.rstrip()+"\nBR2_PACKAGE_LIBOPENSSL_BIN=y\n")
 shutil.copyfile(Path(__file__).parent/"client.h",ui/"azeez_dev_client.h")
 def sub(p,a,b):
     p=ui/p;s=p.read_text()
