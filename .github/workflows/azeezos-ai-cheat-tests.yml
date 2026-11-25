@@ -22,3 +22,7 @@ jobs:
         run: |
           g++ -std=c++17 -Wall -Wextra -Werror -pedantic -fsanitize=address,undefined tools/ai-cheats/live_scan_test.cpp -o /tmp/azeez-live-scan
           /tmp/azeez-live-scan
+      - name: Compile and run cheat trial tests
+        run: |
+          g++ -std=c++17 -Wall -Wextra -Werror -pedantic -fsanitize=address,undefined tools/ai-cheats/trial_test.cpp -o /tmp/azeez-trial
+          /tmp/azeez-trial
