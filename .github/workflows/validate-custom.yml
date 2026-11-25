@@ -159,6 +159,7 @@ jobs:
           python3 tools/mods/integrate.py BananaLinux
           python3 tools/ai-dev/integrate.py BananaLinux
           python3 tools/ai-cheats/integrate_nds.py BananaLinux
+          python3 tools/ai-cheats/integrate_maps.py BananaLinux
       - name: Generate and validate proposed feature patch
         env:
           FEATURE_REQUEST: ${{ inputs.feature_request }}
