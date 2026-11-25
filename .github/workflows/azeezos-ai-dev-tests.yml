@@ -1,0 +1,21 @@
+name: AzeezOS AI development security tests
+on:
+  push:
+    branches: [azeezos-2.0]
+    paths:
+      - 'tools/ai-dev/**'
+      - '.github/workflows/azeezos-ai-dev-tests.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  stage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: |
+          python3 -m py_compile tools/ai-dev/{generate,sign,stage}.py
+          python3 tools/ai-dev/stage_test.py -v
