@@ -167,7 +167,7 @@ jobs:
           (cd "$ORIGINAL"; sha256sum Image *.dtb rootfs.squashfs > sha256sums; sha256sum -c sha256sums)
           mkdir -p out
           tar -cf out/banana-rgds-2.0.0-dev.5.update.tar -C original "$(basename "$ORIGINAL")"
-          sha256sum out/*.update.tar > out/SHA256SUMS-rgds.txt
+          (cd out; sha256sum *.update.tar > SHA256SUMS-rgds.txt; sha256sum -c SHA256SUMS-rgds.txt)
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.proposed_feature && 'AzeezOS-AI-Proposal-UNREVIEWED' || 'AzeezOS-2.0-Dev-Preview' }}
