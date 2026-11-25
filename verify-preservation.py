@@ -83,6 +83,7 @@ for before, after in (
     ("nds_btn_r2 = ff", "nds_btn_r2 = r"),
     ("ra_btn_r2.gba = ff", "ra_btn_r2.gba = game"),
     ("theme = dark", "theme = user:rgds-ds-classic"),
+    ("ds_cart_art = box", "ds_cart_art = box\n# Game list ordering: title or region, then title.\ngame_sort = title"),
 ):
     if expected.count(before + "\n") != 1:
         sys.exit("Upstream settings template changed around " + before)
@@ -102,6 +103,10 @@ for before, after in (
      '{ "ra_shader", "off", ENUM, SHADERS, 0, 0, true },\n'
      '            { "rgds_n64_texfilter", "3point", ENUM, N64_TEXTURE_FILTER, 0, 0, true },\n'
      '            { "ra_shader_override", "inherit", ENUM, RGDS_SCREEN_OVERRIDES, 0, 0, true, true },'),
+    ('const char* const DS_CART_ART[] = { "box", "icon", nullptr };',
+     'const char* const DS_CART_ART[] = { "box", "icon", nullptr };\n\t\tconst char* const GAME_SORT[] = { "title", "region", nullptr };'),
+    ('{ "ds_cart_art", "box", ENUM, DS_CART_ART, 0, 0 },',
+     '{ "ds_cart_art", "box", ENUM, DS_CART_ART, 0, 0 },\n\t\t\t{ "game_sort", "title", ENUM, GAME_SORT, 0, 0 },'),
     ('{ "theme", "dark", TEXT, nullptr, 0, 0 }',
      '{ "theme", "user:rgds-ds-classic", TEXT, nullptr, 0, 0 }'),
     ('{ "nds_btn_l2", "swap", ENUM, NDS_BTN, 0, 0, true },',
