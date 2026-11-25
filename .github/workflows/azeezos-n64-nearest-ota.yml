@@ -1,4 +1,4 @@
-name: AzeezOS N64 Nearest and Maximum Integer OTA Release
+name: AzeezOS GBA Bitmap Fix OTA Release
 on:
   workflow_dispatch:
   push:
@@ -10,6 +10,7 @@ on:
       - 'tools/next-integer-viewport-source.py'
       - 'tools/next-integer-viewport-integration.py'
       - 'tools/next-integer-rootfs.py'
+      - 'rgds-mgba-viewport-source.py'
 permissions:
   contents: write
   actions: read
@@ -87,7 +88,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p base
-          gh run download 45142780301 -R michaelodorisio137-blip/bananaosotg -n AzeezOS-Next-Test-Firmware -D base
+          gh run download 45312081988 -R michaelodorisio137-blip/bananaosotg -n AzeezOS-Integer-N64-OTA-Update -D base
           find base -type f -name '*.update.tar' -size +100M -print | tee /tmp/base-update
           test -s /tmp/base-update
       - name: Install N64 binaries into working root filesystem
@@ -101,13 +102,13 @@ jobs:
           test -s rootfs/usr/lib/libretro/mgba_expanded_libretro.so
           test -s rootfs/usr/share/banana/themes/rgds-ds-dark.json
           test -s rootfs/usr/share/libretro/shaders/glsl/rgds/sharp-image-adjust.glslp
-          cp BananaLinux/output/rgds/target/usr/lib/libretro/mupen64plus_next_libretro.so rootfs/usr/lib/libretro/mupen64plus_next_libretro.so
-          cp BananaLinux/output/rgds/target/usr/bin/banana-ui rootfs/usr/bin/banana-ui
-          cp BananaLinux/output/rgds/target/usr/lib/libretro/mgba_integer_libretro.so rootfs/usr/lib/libretro/mgba_integer_libretro.so
-          python3 tools/next-integer-rootfs.py rootfs
+          test -s BananaLinux/output/rgds/target/usr/lib/libretro/mgba_expanded_libretro.so
+          test -s rootfs/usr/lib/libretro/mgba_integer_libretro.so
+          cp BananaLinux/output/rgds/target/usr/lib/libretro/mgba_expanded_libretro.so rootfs/usr/lib/libretro/mgba_expanded_libretro.so
+          cmp BananaLinux/output/rgds/target/usr/lib/libretro/mgba_expanded_libretro.so rootfs/usr/lib/libretro/mgba_expanded_libretro.so
           sh -n rootfs/usr/libexec/banana/run-bananafront
           strings rootfs/usr/bin/banana-ui | grep -q 'mGBA Maximum Integer (NEW)'
-          printf '0.5.3.8-integer-n64.1\n' > rootfs/etc/banana/version
+          printf '0.5.3.9-gba-bitmap.1\n' > rootfs/etc/banana/version
           python3 tools/quick-gb-gbc-firmware-patch.py --verify rootfs
           sh -n rootfs/usr/libexec/banana/run-retroarch
           sh -n rootfs/usr/libexec/banana/update
@@ -118,10 +119,10 @@ jobs:
           ORIGINAL="$(dirname "$(head -n 1 /tmp/rootfs-path)")"
           rm -f "$ORIGINAL/rootfs.squashfs"
           mksquashfs rootfs "$ORIGINAL/rootfs.squashfs" -comp xz -b 131072 -noappend -processors 4 >/tmp/mksquashfs.log
-          printf '0.5.3.8-integer-n64.1\n' > "$ORIGINAL/VERSION"
+          printf '0.5.3.9-gba-bitmap.1\n' > "$ORIGINAL/VERSION"
           (cd "$ORIGINAL"; sha256sum Image *.dtb rootfs.squashfs > sha256sums)
           mkdir -p out
-          tar -cf out/banana-rgds-0.5.3.8-integer-n64.1.update.tar -C original "$(basename "$ORIGINAL")"
+          tar -cf out/banana-rgds-0.5.3.9-gba-bitmap.1.update.tar -C original "$(basename "$ORIGINAL")"
           (cd "$ORIGINAL"; sha256sum -c sha256sums)
           tar -tf out/*.update.tar | grep -q '/rootfs.squashfs'
           sha256sum out/*.update.tar > out/SHA256SUMS-rgds.txt
@@ -129,7 +130,7 @@ jobs:
       - name: Upload installable OTA file
         uses: actions/upload-artifact@v4
         with:
-          name: AzeezOS-Integer-N64-OTA-Update
+          name: AzeezOS-GBA-Bitmap-OTA-Update
           retention-days: 30
           compression-level: 0
           path: out/*
@@ -138,17 +139,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cat > /tmp/notes.txt <<'EOF'
-          AzeezOS native RG DS update: Mupen64Plus-Next adds real GLideN64 nearest-neighbor 3D texture sampling.
-          Existing bilinear and N64 three-point filters remain available.
-          New separate mGBA Maximum Integer core: GB/GBC 3x and GBA 2x, native 640x480, expanded VRAM background and no letterboxing or fractional scaling.
-          Select mGBA Maximum Integer (NEW) in each handheld system's emulator settings. The original 320x204 Expanded core remains available. Exterior sprites and line effects are not guaranteed; the native LCD image remains unchanged.
-          Select Settings > Other systems > Picture & sound > Nintendo 64 textures.
-          Preserves the expanded GB/GBC viewport, DS themes, and existing games and saves.
-          Experimental release, test on actual RG DS hardware.
+          Fix native bitmap row pitch and bounds for GBA modes 3 and 4 in the expanded mGBA core.
+          Preserve the existing maximum integer core, N64 texture filters, GB/GBC viewport, themes and saves from the last successful OTA.
+          Mode 5 already uses native dimensions and is unchanged.
+          Source-level correction; hardware verification pending.
           EOF
-          gh release create v0.5.3.8-integer-n64.1 \
-            out/banana-rgds-0.5.3.8-integer-n64.1.update.tar out/SHA256SUMS-rgds.txt \
+          gh release create v0.5.3.9-gba-bitmap.1 \
+            out/banana-rgds-0.5.3.9-gba-bitmap.1.update.tar out/SHA256SUMS-rgds.txt \
             --repo michaelodorisio137-blip/bananaosotg \
-            --title "AzeezOS RG DS 0.5.3.8 - Maximum Integer Viewport and N64 Nearest" \
+            --title "AzeezOS RG DS 0.5.3.9 - GBA Bitmap Fix" \
             --notes-file /tmp/notes.txt --prerelease
-          gh release view v0.5.3.8-integer-n64.1 --repo michaelodorisio137-blip/bananaosotg
+          gh release view v0.5.3.9-gba-bitmap.1 --repo michaelodorisio137-blip/bananaosotg
