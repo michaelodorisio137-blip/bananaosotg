@@ -60,6 +60,7 @@ jobs:
           python3 tools/ai-cheats/integrate_trial.py BananaLinux
           python3 tools/mods/integrate.py BananaLinux
           python3 tools/ai-dev/integrate.py BananaLinux
+          python3 -m py_compile tools/ai-dev/{generate,sign,stage}.py
           python3 tools/ai-cheats/integrate_nds.py BananaLinux
           python3 tools/ai-cheats/integrate_maps.py BananaLinux
           g++ -std=c++17 -Wall -Wextra -Werror tools/mods/patch_test.cpp -lz -o /tmp/mod-patch-test
@@ -138,6 +139,11 @@ jobs:
           python3 tools/quick-gb-gbc-firmware-patch.py --verify rootfs
           cp BananaLinux/output/rgds/target/usr/bin/banana-ui rootfs/usr/bin/banana-ui
           python3 tools/ai-cheats/launcher_identity.py rootfs
+          install -m 0755 tools/ai-dev/stage.py rootfs/usr/libexec/banana/azeez-stage-ai.py
+          test -x rootfs/usr/bin/python3
+          test -s BananaLinux/output/rgds/target/usr/bin/openssl
+          install -m 0755 BananaLinux/output/rgds/target/usr/bin/openssl rootfs/usr/bin/openssl
+          for lib in libcrypto.so.3 libssl.so.3; do test -e rootfs/usr/lib/$lib || test -e rootfs/lib/$lib; done
           sh -n rootfs/usr/libexec/banana/run-retroarch
           grep -q 'azeez-cheat-session' rootfs/usr/libexec/banana/run-retroarch
           strings rootfs/usr/bin/banana-ui | grep -q 'Confirmed cheat saved'
