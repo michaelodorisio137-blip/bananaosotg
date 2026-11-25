@@ -75,7 +75,7 @@ sub("settings_gamepanel.cpp",'text(gSysId=="gba"?"GBA IWRAM":"GB WRAM",true,18,4
                 text("Undo",true,19,342,438,p.ink);
                 be->endScreen();return;
             }''')
-sub("settings_gamepanel.cpp",'wrapped(scan->status,18,24,82,590,3,p.ink);\n            text("8-bit candidates (read-only)",true,18,24,150,p.muted);','''wrapped(c&&c->trial.state()!=azeez::Trial::Idle?c->status():scan->status,18,24,82,590,3,p.ink);
+sub("settings_gamepanel.cpp",'wrapped(scan->status,18,24,82,590,3,p.ink);\n            text("8-bit candidates (read-only)",true,18,24,150,p.muted);','''wrapped(c&&(c->trial.state()!=azeez::Trial::Idle||!c->note.empty())?c->status():scan->status,18,24,82,590,3,p.ink);
             text(c&&c->savedView?"Confirmed one-shot cheats":"8-bit candidates - offline test",true,18,24,150,p.muted);''')
 sub("settings_gamepanel.cpp",'''for(auto c:scan->results(5)) {
                 char line[80]; snprintf(line,sizeof line,"%08llX   value %u",(unsigned long long)c.address,c.value);
