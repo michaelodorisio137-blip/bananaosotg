@@ -1,5 +1,5 @@
 name: Validate RG DS custom patches
-run-name: ${{ inputs.request_id && format('AzeezOS AI {0}', inputs.request_id) || 'Validate RG DS custom patches' }}
+run-name: ${{ inputs.approve_run && format('AzeezOS Approve {0}', inputs.approve_run) || inputs.request_id && format('AzeezOS AI {0}', inputs.request_id) || 'Validate RG DS custom patches' }}
 
 on:
   push:
@@ -38,6 +38,10 @@ on:
         description: "Device request identifier"
         type: string
         required: false
+      approve_run:
+        description: "Reviewed successful AI proposal run ID to sign (optional)"
+        type: string
+        required: false
 
 concurrency:
   group: rgds-validate-${{ github.ref }}
@@ -45,7 +49,7 @@ concurrency:
 
 jobs:
   validate:
-    if: ${{ !inputs.feature_request }}
+    if: ${{ !inputs.feature_request && !inputs.approve_run }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -131,7 +135,7 @@ jobs:
               "upstream/ui/src/$f"
           done
   generate:
-    if: ${{ github.ref == 'refs/heads/azeezos-2.0' && inputs.feature_request != '' }}
+    if: ${{ github.ref == 'refs/heads/azeezos-2.0' && inputs.feature_request != '' && !inputs.approve_run }}
     permissions:
       contents: read
     runs-on: ubuntu-24.04
@@ -178,3 +182,27 @@ jobs:
     uses: ./.github/workflows/azeezos-2-preview.yml
     with:
       proposed_feature: true
+  sign-reviewed:
+    if: ${{ github.ref == 'refs/heads/azeezos-2.0' && inputs.approve_run != '' && !inputs.feature_request }}
+    environment: azeezos-release-review
+    permissions:
+      contents: read
+      actions: read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Sign explicitly reviewed firmware
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APPROVE_RUN: ${{ inputs.approve_run }}
+          AZEEZOS_SIGNING_KEY: ${{ secrets.AZEEZOS_SIGNING_KEY }}
+        run: python3 tools/ai-dev/sign.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AzeezOS-Reviewed-${{ inputs.approve_run }}
+          path: reviewed-output/*
+          retention-days: 14
+          compression-level: 0
