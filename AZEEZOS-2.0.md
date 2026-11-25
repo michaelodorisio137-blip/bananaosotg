@@ -7,3 +7,17 @@ Implemented in dev.1: region sort, touch-accessible AI Cheats research panel for
 Not implemented in dev.1: AI memory search, candidate application, user-confirmed working cheat catalog, cheat toggles, dual-screen DS overlay, Mods browser, AI self-upgrading agent, permanent six-tab dashboard. Do not describe this preview as a complete 2.0. No AI output is executed. The source-backed draft is not a verified cheat. Reset resets the current core and does not replace the ROM. Requires hardware validation.
 
 Next: authenticated build service, per-emulator cheat adapters, exact ROM SHA-256 identity, temporary test and restore, live memory differential search, confirmation, persistent enabled cheats, DS overlay, mod downloads/patch verification, signed build manifests and recovery.
+
+## Development preview 2
+- Adds a read-only differential RAM search page for the existing single-screen game panel. Initial supported ranges: GBA IWRAM (32 KiB) and GB/GBC WRAM (8 KiB). Uses the existing RetroArch command pipe or BananaFront shared-memory transport, with bounded reads, explicit failures and no incomplete snapshot committed. Scans are non-atomic while gameplay runs. Companion-active games are excluded until the reply arbitration is validated.
+- The 8/16/32-bit search algorithm and transport tests pass locally (source blob hashes verified). The exposed live page currently searches 8-bit values only. Do not claim on-device verification.
+- A separate one-shot write/readback/undo state machine and tests exist. It is not wired to the device UI, does not freeze values and cannot yet persist a cheat. Do not execute model-generated code.
+- Preview builds remain separate from production OTA. Main branch and existing stable root filesystem are not modified by this work.
+
+## Release acceptance gates (all required before final 2.0)
+1. Pinned upstream integration and clean ARM64 compile; checksum-verified update artifact and tested rollback.
+2. Physical RG DS tests: boot, controls, Wi-Fi, OTG, SD preservation, dual displays, audio, save states, all existing viewport and texture filtering options, and region sort.
+3. AI cheats: exact ROM/core identification; offline-only test, readback, explicit confirmation, restore/recovery, persistent list and enable/disable, both one-screen and DS game integrations.
+4. Mod browser: actual source-backed search, matching ROM revision, download integrity, non-destructive patch installation, restart and revert; do not overwrite original ROMs.
+5. AI development: authenticated build requests, isolated code changes, test logs, signed/verified updates, explicit installation and recovery.
+6. No placeholder tabs or simulated success. A preview artifact is not the finished release; unsupported modes must be clearly identified. 
