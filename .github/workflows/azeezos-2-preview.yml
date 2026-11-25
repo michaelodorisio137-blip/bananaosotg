@@ -1,0 +1,120 @@
+name: AzeezOS 2.0 development preview
+on:
+  workflow_dispatch:
+  push:
+    branches: [azeezos-2.0]
+    paths:
+      - 'tools/azeezos-2-*'
+      - '.github/workflows/azeezos-2-preview.yml'
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: azeezos-2-preview
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      BR2_DL_DIR: ${{ github.workspace }}/dl
+    steps:
+      - name: Checkout patch repository
+        uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          sudo apt-get update -qq
+          sudo apt-get install -y build-essential bc bison flex libssl-dev libelf-dev unzip rsync cpio file wget python3-dev swig libgnutls28-dev squashfs-tools cmake libdrm-dev libasound2-dev libfreetype-dev zlib1g-dev
+      - name: Checkout BananaLinux upstream
+        uses: actions/checkout@v4
+        with:
+          repository: JorreFog/BananaLinux
+          ref: 54123092f4cb8195d01b82ad12c880d35de059d0
+          path: BananaLinux
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Integrate full AzeezOS and N64 nearest core
+        run: |
+          set -eu
+          python3 -m py_compile apply.py tools/next-n64-integration.py tools/next-n64-source.py
+          python3 apply.py BananaLinux
+          python3 verify-preservation.py BananaLinux
+          python3 tools/next-n64-integration.py BananaLinux
+          python3 tools/next-integer-viewport-integration.py BananaLinux
+          python3 -m py_compile tools/next-integer-viewport-source.py tools/next-integer-rootfs.py
+          python3 tools/azeezos-2-region.py BananaLinux
+          python3 tools/azeezos-2-panel.py BananaLinux
+          for f in settings_gamepanel.cpp main.cpp library.cpp settings.cpp settings_defaults.cpp; do
+            g++ -std=c++17 -fsyntax-only -IBananaLinux/ui/src -IBananaLinux/ui -IBananaLinux/ui/rnds $(pkg-config --cflags freetype2 libdrm zlib) BananaLinux/ui/src/$f
+          done
+          grep -q 'Nearest neighbor (NEW)' BananaLinux/ui/src/settings.cpp
+          grep -q '"nearest"' BananaLinux/ui/src/settings_defaults.cpp
+          grep -q 'nearest) t=nearest' BananaLinux/system/rootfs/usr/libexec/banana/run-retroarch
+          grep -q 'next-n64-source.py' BananaLinux/buildroot/package/libretro-mupen64plus-next/libretro-mupen64plus-next.mk
+          sh -n BananaLinux/system/rootfs/usr/libexec/banana/run-retroarch
+          git -C BananaLinux diff --check
+      - name: Restore Buildroot cache
+        uses: actions/cache/restore@v4
+        with:
+          path: dl
+          key: otg-dl-${{ hashFiles('apply.py', 'usb-sd2') }}
+          restore-keys: otg-dl-
+      - name: Compile AArch64 GLideN64 and Settings menu
+        run: |
+          set -eu
+          make -C BananaLinux rgds
+          CORE=BananaLinux/output/rgds/target/usr/lib/libretro/mupen64plus_next_libretro.so
+          UI=BananaLinux/output/rgds/target/usr/bin/banana-ui
+          test -s "$CORE"; test -s "$UI"
+          test -s BananaLinux/output/rgds/target/usr/lib/libretro/mgba_integer_libretro.so
+          strings BananaLinux/output/rgds/target/usr/lib/libretro/mgba_integer_libretro.so | grep -q 'mGBA Maximum Integer RGDS'
+          strings "$UI" | grep -q 'mGBA Maximum Integer (NEW)'
+          file "$CORE" "$UI"
+          strings "$CORE" | grep -q nearest
+          strings "$UI" | grep -q 'Nearest neighbor (NEW)'
+      - name: Download latest successful AzeezOS OTA
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p base
+          gh run download 45609538902 -R michaelodorisio137-blip/bananaosotg -n AzeezOS-GBA-Bitmap-OTA-Update -D base
+          find base -type f -name '*.update.tar' -size +100M -print | tee /tmp/base-update
+          test -s /tmp/base-update
+      - name: Overlay only the new user interface onto the working baseline
+        run: |
+          set -eu
+          mkdir original
+          tar -xf "$(head -n 1 /tmp/base-update)" -C original
+          find original -type f -name rootfs.squashfs | head -1 | tee /tmp/rootfs-path
+          test -s /tmp/rootfs-path
+          unsquashfs -d rootfs "$(cat /tmp/rootfs-path)"
+          test -s rootfs/usr/lib/libretro/mgba_expanded_libretro.so
+          test -s rootfs/usr/lib/libretro/mgba_integer_libretro.so
+          test -s rootfs/usr/share/banana/themes/rgds-ds-dark.json
+          test -s rootfs/usr/share/libretro/shaders/glsl/rgds/sharp-image-adjust.glslp
+          python3 tools/quick-gb-gbc-firmware-patch.py --verify rootfs
+          cp BananaLinux/output/rgds/target/usr/bin/banana-ui rootfs/usr/bin/banana-ui
+          strings rootfs/usr/bin/banana-ui | grep -q 'AI Cheats'
+          strings rootfs/usr/bin/banana-ui | grep -q 'game_sort'
+          strings rootfs/usr/bin/banana-ui | grep -q 'mGBA Maximum Integer (NEW)'
+          strings rootfs/usr/bin/banana-ui | grep -q 'Nearest neighbor (NEW)'
+          printf '\n# AzeezOS 2.0 library sort\ngame_sort = title\n' >> rootfs/etc/banana/settings.conf
+          printf '2.0.0-dev.1\n' > rootfs/etc/banana/version
+      - name: Package development preview (not published to OTA feed)
+        run: |
+          set -eu
+          ORIGINAL="$(dirname "$(head -n 1 /tmp/rootfs-path)")"
+          rm "$ORIGINAL/rootfs.squashfs"
+          mksquashfs rootfs "$ORIGINAL/rootfs.squashfs" -comp xz -b 131072 -noappend -processors 4
+          printf '2.0.0-dev.1\n' > "$ORIGINAL/VERSION"
+          (cd "$ORIGINAL"; sha256sum Image *.dtb rootfs.squashfs > sha256sums; sha256sum -c sha256sums)
+          mkdir -p out
+          tar -cf out/banana-rgds-2.0.0-dev.1.update.tar -C original "$(basename "$ORIGINAL")"
+          sha256sum out/*.update.tar > out/SHA256SUMS-rgds.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AzeezOS-2.0-Dev-Preview
+          retention-days: 14
+          compression-level: 0
+          path: out/*
