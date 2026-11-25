@@ -4,7 +4,7 @@ from pathlib import Path
 import shutil,sys
 ui=Path(sys.argv[1])/"ui/src"
 for name in ("ram_scan.h","live_scan.h"):
-    shutil.copyfile(Path(__file__).with_name("ai-cheats")/name,ui/name)
+    shutil.copyfile(Path(__file__).parent/name,ui/name)
 def sub(p,a,b):
     p=ui/p;s=p.read_text()
     if s.count(a)!=1:raise SystemExit(f"live scan anchor mismatch {p}: {a[:90]!r} ({s.count(a)})")
