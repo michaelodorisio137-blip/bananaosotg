@@ -79,7 +79,7 @@ inline std::shared_ptr<Job> installPatch(std::string rom,Candidate c){
             int closeResult=close(fd);
             try{
                 if(at!=p.size()||closeResult)throw std::runtime_error("Patch staging failed");
-                char id[12];snprintf(id,sizeof id,"%08x",patchCRC);
+                char id[12];snprintf(id,sizeof id,"%08x",le32(p,p.size()-4));
                 std::string dst=rom.substr(0,dot)+" (Mod "+id+")"+rom.substr(dot);
                 azeez::mods::install(rom,tmp,dst,source,patchCRC);path=dst;
             }catch(...){unlink(tmp.c_str());throw;}
