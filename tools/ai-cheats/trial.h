@@ -25,6 +25,7 @@ public:
     uint32_t address()const{return address_;}
     unsigned value()const{return value_;}
     unsigned original()const{return old_;}
+    void interrupt(){if(state_==ReadOriginal)next(Failed);else if(state_!=Idle&&state_!=Confirmed&&state_!=Reverted&&state_!=Failed)next(Unknown);}
     bool canSave()const{return state_==Confirmed;}
     bool begin(uint32_t address,unsigned value){
         if(value>255||!(state_==Idle||state_==Confirmed||state_==Reverted||state_==Failed))return false;
