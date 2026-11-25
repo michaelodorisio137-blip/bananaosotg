@@ -1,6 +1,11 @@
 #pragma once
 #include "azeezos_ai_cheats.h"
 #include <random>
+#include <stdexcept>
+#include <spawn.h>
+#include <sys/wait.h>
+#include <cerrno>
+extern char** environ;
 namespace banana::azdev {
 inline constexpr const char* base="https://api.github.com/repos/michaelodorisio137-blip/bananaosotg";
 struct Result {
@@ -82,4 +87,33 @@ inline std::shared_ptr<Result> poll(std::string id){
         std::lock_guard<std::mutex> l(r->lock);r->id=id;r->ok=ok;r->message=message;r->url=url;r->done=true;
     }).detach();return r;
 }
+inline std::shared_ptr<Result> stage(std::string id,std::string data){
+    auto r=std::make_shared<Result>();
+    std::thread([r,id,data]{
+        bool ok=false;std::string message;
+        try{
+            if(!validId(id))throw std::runtime_error("No active feature request");
+            char output[]="/run/banana/azeez-stage-XXXXXX";
+            int fd=mkstemp(output);if(fd<0)throw std::runtime_error("Could not create staging log");
+            posix_spawn_file_actions_t actions;
+            int e=posix_spawn_file_actions_init(&actions);
+            if(e){close(fd);unlink(output);throw std::runtime_error("Could not create staging process");}
+            posix_spawn_file_actions_adddup2(&actions,fd,1);
+            posix_spawn_file_actions_adddup2(&actions,fd,2);
+            posix_spawn_file_actions_addclose(&actions,fd);
+            std::string python="/usr/bin/python3",script="/usr/libexec/banana/azeez-stage-ai.py";
+            char* argv[]={python.data(),script.data(),const_cast<char*>(id.c_str()),const_cast<char*>(data.c_str()),nullptr};
+            pid_t child=0;e=posix_spawn(&child,python.c_str(),&actions,nullptr,argv,environ);
+            posix_spawn_file_actions_destroy(&actions);close(fd);
+            int st=0;pid_t got=-1;
+            if(!e){do{got=waitpid(child,&st,0);}while(got<0&&errno==EINTR);}
+            std::ifstream log(output);std::getline(log,message);unlink(output);
+            ok=!e&&got==child&&WIFEXITED(st)&&WEXITSTATUS(st)==0;
+            if(message.empty())message=ok?"Update staged. Use System > Updates.":"Staging failed.";
+            if(message.size()>240)message.resize(240);
+        }catch(const std::exception& e){message=e.what();}
+        std::lock_guard<std::mutex> l(r->lock);r->id=id;r->ok=ok;r->message=message;r->done=true;
+    }).detach();return r;
+}
+
 }
