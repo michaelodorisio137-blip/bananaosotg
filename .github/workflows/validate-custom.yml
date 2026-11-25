@@ -1,4 +1,5 @@
 name: Validate RG DS custom patches
+run-name: ${{ inputs.request_id && format('AzeezOS AI {0}', inputs.request_id) || 'Validate RG DS custom patches' }}
 
 on:
   push:
@@ -28,6 +29,15 @@ on:
       - 'usb-sd2'
       - '.github/workflows/validate-custom.yml'
   workflow_dispatch:
+    inputs:
+      feature_request:
+        description: "Optional AzeezOS AI feature request"
+        type: string
+        required: false
+      request_id:
+        description: "Device request identifier"
+        type: string
+        required: false
 
 concurrency:
   group: rgds-validate-${{ github.ref }}
@@ -35,6 +45,7 @@ concurrency:
 
 jobs:
   validate:
+    if: ${{ !inputs.feature_request }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -119,3 +130,48 @@ jobs:
               $(pkg-config --cflags freetype2 libdrm zlib) \
               "upstream/ui/src/$f"
           done
+  generate:
+    if: ${{ github.ref == 'refs/heads/azeezos-2.0' && inputs.feature_request != '' }}
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: JorreFog/BananaLinux
+          ref: 54123092f4cb8195d01b82ad12c880d35de059d0
+          path: BananaLinux
+          persist-credentials: false
+      - name: Prepare exact source context
+        run: |
+          python3 apply.py BananaLinux
+          python3 verify-preservation.py BananaLinux
+          python3 tools/next-n64-integration.py BananaLinux
+          python3 tools/next-integer-viewport-integration.py BananaLinux
+          python3 tools/azeezos-2-region.py BananaLinux
+          python3 tools/azeezos-2-panel.py BananaLinux
+          python3 tools/ai-cheats/integrate.py BananaLinux
+          python3 tools/ai-cheats/integrate_trial.py BananaLinux
+          python3 tools/mods/integrate.py BananaLinux
+      - name: Generate and validate proposed feature patch
+        env:
+          FEATURE_REQUEST: ${{ inputs.feature_request }}
+          AZEEZOS_OPENAI_API_KEY: ${{ secrets.AZEEZOS_OPENAI_API_KEY }}
+        run: python3 tools/ai-dev/generate.py BananaLinux
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AI-feature-review
+          path: ai-dev-output/*
+          retention-days: 14
+  build-proposal:
+    needs: generate
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/azeezos-2-preview.yml
+    with:
+      proposed_feature: true
