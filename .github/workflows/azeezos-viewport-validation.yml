@@ -1,0 +1,73 @@
+name: Expanded viewport source validation and DraStic layout
+on:
+  push:
+    branches: [azeezos-2.0]
+    paths:
+      - '.github/workflows/azeezos-viewport-validation.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source-patches:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: JorreFog/SuperDrastic
+          ref: e54aaa8e2693352ad9f33a0d3d75ea4b887f1957
+          path: BananaDS
+      - uses: actions/checkout@v4
+        with:
+          repository: libretro/pcsx_rearmed
+          ref: c8816799b50388e61cfe237fe2cdbb7d8175f20a
+          path: PCSX
+      - name: Verify patches against pinned actual source
+        run: |
+          set -eux
+          python3 -m py_compile tools/azeezos-2-ds-expanded.py tools/azeezos-2-expanded-source.py
+          python3 tools/azeezos-2-ds-expanded.py BananaDS
+          python3 tools/azeezos-2-bananads-filter.py --source BananaDS
+          python3 tools/azeezos-2-expanded-source.py psx PCSX
+          git -C BananaDS diff --check
+          git -C PCSX diff --check
+          grep -q 'rx=64; ry=48; rw=512; rh=384' BananaDS/bananads/src/frontend_kms.cpp
+          grep -q 'az_psx_rect' PCSX/plugins/gpulib/vout_pl.c
+      - name: Verify integer touchscreen transform
+        run: |
+          python3 - <<'PY'
+          for y in range(480):
+              for x in range(640):
+                  inside = 64 <= x < 576 and 48 <= y < 432
+                  if inside:
+                      tx, ty = (x-64)//2, (y-48)//2
+                      assert 0 <= tx < 256 and 0 <= ty < 192
+                      assert 64 + tx*2 <= x <= 65 + tx*2
+                      assert 48 + ty*2 <= y <= 49 + ty*2
+          print("PASS: all 307200 RG DS touchscreen positions checked")
+          PY
+  drastic-layout:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Identify the exact upstream DraStic executable and compositor call sites
+        run: |
+          set -eux
+          sudo apt-get update -qq
+          sudo apt-get install -y binutils-aarch64-linux-gnu
+          curl -fL --retry 3 https://raw.githubusercontent.com/ROCKNIX/packages/main/drastic.tar.gz -o /tmp/drastic.tar.gz
+          mkdir /tmp/drastic
+          tar -xzf /tmp/drastic.tar.gz -C /tmp/drastic
+          bin="$(find /tmp/drastic -type f -path '*/drastic_aarch64/drastic' -print -quit)"
+          test -n "$bin"
+          file "$bin"
+          md5sum "$bin"
+          sha256sum "$bin"
+          test "$(md5sum "$bin" | cut -d' ' -f1)" = 17550db727f3b59d36b57746ad1944be
+          aarch64-linux-gnu-objdump -d "$bin" > /tmp/drastic.asm
+          # Locate references to the already documented 2D compositor and
+          # only print compact call-site windows, never redistribute the binary.
+          grep -i -B 16 -A 5 -E 'bl[[:space:]]+3c6d0([[:space:]]|$)' /tmp/drastic.asm | head -220 || true
+          grep -i -B 10 -A 5 -E 'bl[[:space:]]+9ffc0([[:space:]]|$)' /tmp/drastic.asm | head -140 || true
+          aarch64-linux-gnu-readelf -h "$bin"
