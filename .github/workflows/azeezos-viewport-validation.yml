@@ -4,6 +4,7 @@ on:
     branches: [azeezos-2.0]
     paths:
       - '.github/workflows/azeezos-viewport-validation.yml'
+      - 'tools/azeezos-2-ds-expanded.py'
   workflow_dispatch:
 permissions:
   contents: read
@@ -20,6 +21,12 @@ jobs:
           path: BananaDS
       - uses: actions/checkout@v4
         with:
+          repository: melonDS-emu/melonDS
+          ref: 906e9ebb27da8c6a715cd7abab4abfe8a8d29427
+          path: BananaDS/melonds
+          submodules: recursive
+      - uses: actions/checkout@v4
+        with:
           repository: libretro/pcsx_rearmed
           ref: c8816799b50388e61cfe237fe2cdbb7d8175f20a
           path: PCSX
@@ -27,6 +34,9 @@ jobs:
         run: |
           set -eux
           python3 -m py_compile tools/azeezos-2-ds-expanded.py tools/azeezos-2-expanded-source.py
+          for p in BananaDS/bananads/patches/melonds/*.patch; do
+            git -C BananaDS/melonds apply "$(realpath "$p")"
+          done
           python3 tools/azeezos-2-ds-expanded.py BananaDS
           python3 tools/azeezos-2-bananads-filter.py --source BananaDS
           python3 tools/azeezos-2-expanded-source.py psx PCSX
@@ -34,6 +44,21 @@ jobs:
           git -C PCSX diff --check
           grep -q 'rx=64; ry=48; rw=512; rh=384' BananaDS/bananads/src/frontend_kms.cpp
           grep -q 'az_psx_rect' PCSX/plugins/gpulib/vout_pl.c
+      - name: Compile actual changed DS translation units
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libdrm-dev libasound2-dev zlib1g-dev pkg-config
+          cmake -S BananaDS/bananads -B /tmp/az-ds-build -DBANANADS_MELONDS_DIR="$PWD/BananaDS/melonds" -DBANANADS_MELONDS_PATCHES=OFF -DBANANADS_SDL=OFF -DBANANADS_KMS=ON -DBANANADS_LAN=OFF -DBANANADS_GENGIS=OFF -DBANANADS_LTO=OFF -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+          python3 - <<'PY'
+          import json, subprocess
+          db=json.load(open('/tmp/az-ds-build/compile_commands.json'))
+          for name in ('/bananads/src/emu.cpp','/bananads/src/frontend_kms.cpp'):
+              matches=[x for x in db if x['file'].endswith(name)]
+              assert len(matches)==1,name
+              entry=matches[0]
+              subprocess.run(entry['command'],cwd=entry['directory'],shell=True,check=True)
+          print('PASS: actual DS frontend translation units compiled')
+          PY
       - name: Verify integer touchscreen transform
         run: |
           python3 - <<'PY'

@@ -9,6 +9,15 @@ def rep(rel,a,b):
     if b in s: return
     if s.count(a)!=1: raise SystemExit("DS viewport anchor: "+rel+" "+repr(a[:80]))
     p.write_text(s.replace(a,b,1))
+# Keep the GPU's internal methods private; expose one narrowly scoped read-only accessor.
+rep("melonds/src/GPU.h","private:\n    void ResetVRAMCache() noexcept;",
+    """    u16 ReadExpandedBGPalette(bool engine_b, u32 addr) const noexcept
+    {
+        return engine_b ? ReadVRAM_BBGExtPal<u16>(addr) : ReadVRAM_ABGExtPal<u16>(addr);
+    }
+
+private:
+    void ResetVRAMCache() noexcept;""")
 rep("bananads/src/emu.h","    const uint32_t* bottom() const;",
     """    const uint32_t* bottom() const;
     const uint32_t* expanded_screen(bool bottom) const;""")
@@ -60,7 +69,7 @@ const uint32_t* Emu::expanded_screen(bool bottom_screen) const {
                 if(dc&(1u<<30)) {
                     unsigned slot=(i<2 && (bc&0x2000))?i+2:i;
                     unsigned off=slot*8192+(tile>>12)*512+n*2;
-                    c=bg.Num?gpu.ReadVRAM_BBGExtPal<uint16_t>(off):gpu.ReadVRAM_ABGExtPal<uint16_t>(off);
+                    c=gpu.ReadExpandedBGPalette(bg.Num!=0,off);
                 } else c=gpu.ReadPalette<uint16_t>(bg.Num*0x400+n*2);
             } else {
                 n=(read8(chr+(tile&1023)*32+ty*4+tx/2)>>((tx&1)*4))&15;
