@@ -1,0 +1,45 @@
+name: Mobius live mGBA prototype
+on:
+  push:
+    branches: [mgba-hardware-preview]
+    paths: ['tools/mobius-live/**', '.github/workflows/mobius-live.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  compile:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: libretro/mgba
+          ref: 7a12d6d4b9acb14c0ae62c9166b6a2f3d08007f6
+          path: mgba
+          persist-credentials: false
+      - name: Dependencies
+        run: sudo apt-get update -qq && sudo apt-get install -y cmake build-essential libgles2-mesa-dev glslang-tools
+      - name: Apply patches
+        run: |
+          python3 tools/mgba-hardware/patch.py mgba
+          python3 tools/mobius-live/patch.py mgba
+          python3 tools/mobius-live/test-shader.py
+      - name: Compile emulator
+        run: |
+          cmake -S mgba -B build -DLIBMGBA_ONLY=ON -DBUILD_LIBRETRO=ON -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --target mgba_libretro --parallel 4
+          mkdir out
+          cp "$(find build -name mgba_libretro.so -print -quit)" out/mgba_mobius_libretro.so
+          file out/*.so | tee out/architecture.txt
+          grep -q 'ARM aarch64' out/architecture.txt
+          readelf --version-info out/*.so > out/symbol-versions.txt
+          cp tools/mobius-live/README.md out/
+          (cd out && sha256sum *.so > SHA256SUMS.txt)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Mobius-mGBA-RGDS-Prototype
+          path: out/*
+          retention-days: 14
