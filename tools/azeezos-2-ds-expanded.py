@@ -12,6 +12,9 @@ def rep(rel,a,b):
 rep("bananads/src/emu.h","    const uint32_t* bottom() const;",
     """    const uint32_t* bottom() const;
     const uint32_t* expanded_screen(bool bottom) const;""")
+rep("bananads/src/emu.cpp",'    const long scale_cfg = cfg_.num("render.scale", 1);',
+    '''    const long configured_scale = cfg_.num("render.scale", 1);
+    const long scale_cfg = getenv("AZEEZ_EXPANDED_VIEWPORT") && configured_scale > 2 ? 2 : configured_scale;''')
 rep("bananads/src/emu.cpp","void Emu::set_audio_rate(double hz) {",r"""
 // Read-only exterior tilemap sampling. Native LCD composition is untouched.
 const uint32_t* Emu::expanded_screen(bool bottom_screen) const {
@@ -95,7 +98,6 @@ rep(p,"        if (!hw) return false;\n        for (auto& pb : buf)",
         for (auto& pb : buf)""")
 rep(p,"        const std::string sh = cfg.str(\"kms.shader\", \"none\");",
     """        const std::string sh = dp.az_expanded ? "none" : cfg.str("kms.shader", "none");""")
-rep(p,"    void shader_settings() {", "    void shader_settings() {")
 # Do not let a menu shader turn exact scanout into a second scaling pass.
 rep(p,"        std::string want;\n        bool asked = false;",
     """        if (az_expanded) return;

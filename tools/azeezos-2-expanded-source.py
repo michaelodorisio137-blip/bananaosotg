@@ -131,12 +131,15 @@ elif kind=="psx":
 }
 
 int vout_update(struct psx_gpu *gpu, int src_x, int src_y)""")
-    rep(p,"  check_mode_change(gpu, 0);\n  if (gpu->state.enhancement_active) {",
-        """  {
+    rep(p,"  if (w <= 0 || h <= 0)\n    return 0;\n\n  check_mode_change(gpu, 0);\n  if (gpu->state.enhancement_active) {",
+        """  if (w <= 0 || h <= 0)
+    return 0;
+
+  {
     int left,top;
     if (az_psx_rect(gpu,src_x,src_y,&left,&top)) {
       if (gpu->state.w_out_old!=320 || gpu->state.h_out_old!=240 ||
-          gpu->state.status_vo_old!=gpu->status) {
+          ((gpu->state.status_vo_old^gpu->status)&((7<<16)|(1<<21)))) {
         cbs->pl_vout_set_mode(320,240,320,240,16);
         gpu->state.w_out_old=320; gpu->state.h_out_old=240;
         gpu->state.status_vo_old=gpu->status;
