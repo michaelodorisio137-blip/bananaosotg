@@ -10,7 +10,7 @@ namespace banana::azdev {
 inline constexpr const char* base="https://api.github.com/repos/michaelodorisio137-blip/bananaosotg";
 struct Result {
     std::mutex lock;
-    bool done=false,ok=false;
+    bool done=false,ok=false,buildPassed=false,tracking=false;
     std::string id,message,url,conversation;
 };
 inline std::string newId(){
@@ -102,13 +102,13 @@ inline std::shared_ptr<Result> submit(std::string feature,std::string parent="",
             if(status!=204&&status!=200)throw std::runtime_error("Request rejected (HTTP "+std::to_string(status)+"). Check token and workflow.");
             ok=true;message="Submitted. Tap Status for actual build progress.";
         }catch(const std::exception& e){message=e.what();}
-        std::lock_guard<std::mutex> l(r->lock);r->id=ok?id:"";r->ok=ok;r->message=message;r->done=true;
+        std::lock_guard<std::mutex> l(r->lock);r->id=ok?id:"";r->ok=ok;r->message=message;r->tracking=ok;r->done=true;
     }).detach();return r;
 }
 inline std::shared_ptr<Result> poll(std::string id){
     auto r=std::make_shared<Result>();
     std::thread([r,id]{
-        std::string message,url;bool ok=false;
+        std::string message,url;bool ok=false,passed=false,tracking=true;
         try{
             if(!validId(id))throw std::runtime_error("No active feature request");
             long status=0;
@@ -122,12 +122,13 @@ inline std::shared_ptr<Result> poll(std::string id){
                 auto st=w->str("status"),result=w->str("conclusion");
                 url=w->str("html_url");
                 if(url.rfind("https://github.com/michaelodorisio137-blip/bananaosotg/actions/runs/",0)!=0)url.clear();
-                message=st=="completed"?(result=="success"?"Build passed. Review proposal before installing.":"Build ended: "+result):"GitHub: "+st;
+                passed=st=="completed"&&result=="success";tracking=st!="completed";
+                message=st=="completed"?(passed?"Build passed. Request review to install, or build another change.":"Build ended: "+result+"; last successful base kept."):"Building: "+st;
                 break;
             }
             ok=true;
         }catch(const std::exception& e){message=e.what();}
-        std::lock_guard<std::mutex> l(r->lock);r->id=id;r->ok=ok;r->message=message;r->url=url;r->done=true;
+        std::lock_guard<std::mutex> l(r->lock);r->id=id;r->ok=ok;r->message=message;r->url=url;r->buildPassed=passed;r->tracking=ok&&tracking;r->done=true;
     }).detach();return r;
 }
 // Request protected review of the exact successful proposal. This does not

@@ -22,7 +22,7 @@ permissions:
   actions: read
 concurrency:
   group: ${{ inputs.proposed_feature && format('azeezos-ai-{0}', github.run_id) || 'azeezos-2-preview' }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ !inputs.proposed_feature }}
 jobs:
   build:
     runs-on: ubuntu-24.04
@@ -181,17 +181,20 @@ jobs:
           strings rootfs/usr/bin/banana-ui | grep -q 'mGBA Maximum Integer (NEW)'
           strings rootfs/usr/bin/banana-ui | grep -q 'Nearest neighbor (NEW)'
           printf '\n# AzeezOS 2.0 library sort\ngame_sort = title\n' >> rootfs/etc/banana/settings.conf
-          printf '2.0.0-dev.5\n' > rootfs/etc/banana/version
+          VERSION=2.0.0-dev.5
+          if [ "${{ inputs.proposed_feature }}" = true ]; then VERSION="2.0.0-ai.${GITHUB_RUN_ID}"; fi
+          printf '%s\n' "$VERSION" > rootfs/etc/banana/version
       - name: Package development preview (not published to OTA feed)
         run: |
           set -eu
           ORIGINAL="$(dirname "$(head -n 1 /tmp/rootfs-path)")"
           rm "$ORIGINAL/rootfs.squashfs"
           mksquashfs rootfs "$ORIGINAL/rootfs.squashfs" -comp xz -b 131072 -noappend -processors 4
-          printf '2.0.0-dev.5\n' > "$ORIGINAL/VERSION"
+          VERSION=$(cat rootfs/etc/banana/version)
+          printf '%s\n' "$VERSION" > "$ORIGINAL/VERSION"
           (cd "$ORIGINAL"; sha256sum Image *.dtb rootfs.squashfs > sha256sums; sha256sum -c sha256sums)
           mkdir -p out
-          tar -cf out/banana-rgds-2.0.0-dev.5.update.tar -C original "$(basename "$ORIGINAL")"
+          tar -cf "out/banana-rgds-$VERSION.update.tar" -C original "$(basename "$ORIGINAL")"
           (cd out; sha256sum *.update.tar > SHA256SUMS-rgds.txt; sha256sum -c SHA256SUMS-rgds.txt)
       - uses: actions/upload-artifact@v4
         with:

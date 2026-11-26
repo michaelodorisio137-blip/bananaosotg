@@ -56,7 +56,7 @@ for name in allowed:
         lines=s.splitlines()
         matched=set()
         for i,line in enumerate(lines):
-            if any(x in line for x in ("gAiPanel","gModOpen","gScanOpen","gCheatPanel","gameRender(","gameTouch(","gameUpdate(")):
+            if any(x in line for x in ("gAiPanel","gModOpen","gDevOpen","gScanOpen","gCheatPanel","gameRender(","gameTouch(","gameUpdate(")):
                 matched.update(range(max(0,i-8),min(len(lines),i+12)))
         s="\n".join(f"{i+1}: {lines[i]}" for i in sorted(matched))
     parts.append(f"FILE ui/src/{name}\n{s}")

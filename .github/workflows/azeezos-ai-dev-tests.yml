@@ -19,3 +19,4 @@ jobs:
       - run: |
           python3 -m py_compile tools/ai-dev/{generate,sign,stage}.py
           python3 tools/ai-dev/stage_test.py -v
+          python3 tools/ai-dev/generate_test.py -v
