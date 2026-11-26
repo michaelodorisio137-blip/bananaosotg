@@ -43,20 +43,32 @@ const uint32_t* Emu::expanded_screen(bool bottom_screen) const {
         unsigned r=c&31,g=(c>>5)&31,b=(c>>10)&31;
         return 0xff000000u|((r*255/31)<<16)|((g*255/31)<<8)|(b*255/31);
     };
+    // Build the active text-layer order once per output frame, not per
+    // exterior pixel. Keep the original back-to-front priority/tie order.
+    struct ExpandedLayer { int i; unsigned bc, map, chr; };
+    ExpandedLayer layers[4];
+    unsigned layer_count=0;
+    const bool blank=(dc&0x80) || ((dc>>16)&3)==0;
+    const bool text_active=!blank && ((dc>>16)&3)==1 && bg.Enabled && mode<6;
+    const unsigned backdrop=gpu.ReadPalette<uint16_t>(bg.Num*0x400);
+    if (text_active) for(int pr=3;pr>=0;--pr) for(int i=3;i>=0;--i) {
+        unsigned bc=bg.BGCnt[i];
+        if (!(dc&(0x100u<<i)) || (bc&3)!=(unsigned)pr) continue;
+        if ((i==0 && !bg.Num && (dc&8)) || (i>=2 && mode!=0 &&
+            !(mode==1 && i==2) && !(mode==3 && i==2))) continue;
+        layers[layer_count++]={i,bc,((bc&0x1f00)<<3)+(bg.Num?0:((dc&0x38000000)>>11)),
+            ((bc&0x003c)<<12)+(bg.Num?0:((dc&0x07000000)>>8))};
+    }
     auto sample=[&](int x,int y)->uint32_t {
-        unsigned c=gpu.ReadPalette<uint16_t>(bg.Num*0x400);
-        if ((dc&0x80) || ((dc>>16)&3)==0) return 0xffffffffu;
-        if (((dc>>16)&3)!=1 || !bg.Enabled) return rgb(c);
-        for(int pr=3;pr>=0;--pr) for(int i=3;i>=0;--i) {
-            unsigned bc=bg.BGCnt[i];
-            if (!(dc&(0x100u<<i)) || (bc&3)!=(unsigned)pr) continue;
-            if ((i==0 && !bg.Num && (dc&8)) || (i>=2 && mode!=0 &&
-                !(mode==1 && i==2) && !(mode==3 && i==2))) continue;
-            if (mode>=6) continue;
+        unsigned c=backdrop;
+        if (blank) return 0xffffffffu;
+        for(unsigned k=0;k<layer_count;++k) {
+            const auto& layer=layers[k];
+            const int i=layer.i;
+            const unsigned bc=layer.bc;
             unsigned xx=(unsigned)(x+bg.BGXPos[i]) & ((bc&0x4000)?511:255);
             unsigned yy=(unsigned)(y+bg.BGYPos[i]) & ((bc&0x8000)?511:255);
-            unsigned map=((bc&0x1f00)<<3)+(bg.Num?0:((dc&0x38000000)>>11));
-            unsigned chr=((bc&0x003c)<<12)+(bg.Num?0:((dc&0x07000000)>>8));
+            unsigned map=layer.map, chr=layer.chr;
             unsigned block=(xx>>8)+((yy>>8)*((bc&0x4000)?2:1));
             unsigned tile=read16(map+block*2048+((yy&255)>>3)*64+((xx&255)>>3)*2);
             unsigned tx=xx&7,ty=yy&7;
