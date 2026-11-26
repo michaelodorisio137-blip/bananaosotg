@@ -4,6 +4,8 @@ on:
     branches: [azeezos-2.0]
     paths:
       - 'tools/azeezos-2-*'
+      - 'tools/next-integer-*.py'
+      - 'tools/next-n64-*.py'
       - 'tools/ai-cheats/**'
       - 'tools/mods/**'
       - 'tools/ai-dev/**'
@@ -36,6 +38,9 @@ jobs:
           python3 tools/next-n64-integration.py BananaLinux
           python3 tools/next-integer-viewport-integration.py BananaLinux
           python3 tools/azeezos-2-region.py BananaLinux
+          python3 -m py_compile tools/azeezos-2-native-integer.py tools/azeezos-2-bananads-filter.py
+          python3 tools/azeezos-2-native-integer.py --ui BananaLinux
+          python3 tools/azeezos-2-bananads-filter.py --integrate BananaLinux
           python3 tools/azeezos-2-panel.py BananaLinux
           python3 tools/ai-cheats/integrate.py BananaLinux
           python3 tools/ai-cheats/integrate_trial.py BananaLinux
@@ -48,4 +53,9 @@ jobs:
           for f in settings_gamepanel.cpp main.cpp library.cpp settings.cpp settings_defaults.cpp nds/overlay.cpp complink.cpp; do
             g++ -std=c++17 -fsyntax-only -IBananaLinux/ui/src -IBananaLinux/ui -IBananaLinux/ui/rnds $(pkg-config --cflags freetype2 libdrm zlib) BananaLinux/ui/src/$f
           done
+          grep -q 'Native integer mode' BananaLinux/ui/src/settings.cpp
+          grep -q '3D texture sampling (experimental)' BananaLinux/ui/src/settings.cpp
+          grep -q 'BANANADS_AZEEZ_FILTER' BananaLinux/buildroot/package/bananads/bananads.mk
+          test -s BananaLinux/buildroot/package/bananads/azeezos-2-bananads-filter.py
+          python3 tools/ai-dev/stage_test.py -v
           git -C BananaLinux diff --check
