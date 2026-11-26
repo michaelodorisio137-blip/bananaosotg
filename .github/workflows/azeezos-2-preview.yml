@@ -11,6 +11,8 @@ on:
     branches: [azeezos-2.0]
     paths:
       - 'tools/azeezos-2-*'
+      - 'tools/next-integer-*.py'
+      - 'tools/next-n64-*.py'
       - 'tools/ai-cheats/**'
       - 'tools/mods/**'
       - 'tools/ai-dev/**'
@@ -124,7 +126,7 @@ jobs:
           gh run download 45609538902 -R michaelodorisio137-blip/bananaosotg -n AzeezOS-GBA-Bitmap-OTA-Update -D base
           find base -type f -name '*.update.tar' -size +100M -print | tee /tmp/base-update
           test -s /tmp/base-update
-      - name: Overlay validated UI and N64 core onto the working baseline
+      - name: Overlay validated UI and updated emulator cores onto the working baseline
         run: |
           set -eu
           mkdir original
@@ -140,6 +142,8 @@ jobs:
           cp BananaLinux/output/rgds/target/usr/bin/banana-ui rootfs/usr/bin/banana-ui
           install -m 0644 BananaLinux/output/rgds/target/usr/lib/libretro/mupen64plus_next_libretro.so rootfs/usr/lib/libretro/mupen64plus_next_libretro.so
           cmp BananaLinux/output/rgds/target/usr/lib/libretro/mupen64plus_next_libretro.so rootfs/usr/lib/libretro/mupen64plus_next_libretro.so
+          install -m 0644 BananaLinux/output/rgds/target/usr/lib/libretro/mgba_integer_libretro.so rootfs/usr/lib/libretro/mgba_integer_libretro.so
+          cmp BananaLinux/output/rgds/target/usr/lib/libretro/mgba_integer_libretro.so rootfs/usr/lib/libretro/mgba_integer_libretro.so
           python3 tools/next-integer-rootfs.py rootfs
           grep -q 'nearest) t=nearest' rootfs/usr/libexec/banana/run-retroarch
           strings rootfs/usr/lib/libretro/mupen64plus_next_libretro.so | grep -q nearest
