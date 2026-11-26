@@ -124,7 +124,7 @@ jobs:
           gh run download 45609538902 -R michaelodorisio137-blip/bananaosotg -n AzeezOS-GBA-Bitmap-OTA-Update -D base
           find base -type f -name '*.update.tar' -size +100M -print | tee /tmp/base-update
           test -s /tmp/base-update
-      - name: Overlay only the new user interface onto the working baseline
+      - name: Overlay validated UI and N64 core onto the working baseline
         run: |
           set -eu
           mkdir original
@@ -138,6 +138,11 @@ jobs:
           test -s rootfs/usr/share/libretro/shaders/glsl/rgds/sharp-image-adjust.glslp
           python3 tools/quick-gb-gbc-firmware-patch.py --verify rootfs
           cp BananaLinux/output/rgds/target/usr/bin/banana-ui rootfs/usr/bin/banana-ui
+          install -m 0644 BananaLinux/output/rgds/target/usr/lib/libretro/mupen64plus_next_libretro.so rootfs/usr/lib/libretro/mupen64plus_next_libretro.so
+          cmp BananaLinux/output/rgds/target/usr/lib/libretro/mupen64plus_next_libretro.so rootfs/usr/lib/libretro/mupen64plus_next_libretro.so
+          python3 tools/next-integer-rootfs.py rootfs
+          grep -q 'nearest) t=nearest' rootfs/usr/libexec/banana/run-retroarch
+          strings rootfs/usr/lib/libretro/mupen64plus_next_libretro.so | grep -q nearest
           python3 tools/ai-cheats/launcher_identity.py rootfs
           install -m 0755 tools/ai-dev/stage.py rootfs/usr/libexec/banana/azeez-stage-ai.py
           test -x rootfs/usr/bin/python3
