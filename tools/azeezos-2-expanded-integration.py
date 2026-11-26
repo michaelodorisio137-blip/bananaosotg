@@ -46,4 +46,12 @@ $(eval $(generic-package))
 p.write_text(s)
 rep("ui/src/settings.cpp",'{ "genesis_plus_gx", "Genesis Plus GX" },','{ "genesis_plus_gx", "Genesis Plus GX" }, { "genesis_plus_gx_wide", "Genesis Plus GX Wide" },')
 rep("ui/src/settings.cpp",'{ "bsnes", "bsnes" },','{ "bsnes", "bsnes" }, { "bsnes_hd_beta", "bsnes HD Mode 7" },')
+pkg=root/"buildroot/package/bananads"
+shutil.copyfile(Path(__file__).with_name("azeezos-2-ds-expanded.py"),pkg/"azeezos-2-ds-expanded.py")
+rep("buildroot/package/bananads/bananads.mk","BANANADS_POST_PATCH_HOOKS += BANANADS_MELONDS_PATCH",
+    """BANANADS_POST_PATCH_HOOKS += BANANADS_MELONDS_PATCH
+define BANANADS_AZEEZ_EXPANDED
+	python3 $(BR2_EXTERNAL_BANANA_PATH)/package/bananads/azeezos-2-ds-expanded.py $(@D)
+endef
+BANANADS_POST_PATCH_HOOKS += BANANADS_AZEEZ_EXPANDED""")
 print("Expanded NES, N64, PS1 source hooks and optional Genesis GX Wide / bsnes HD packages integrated.")

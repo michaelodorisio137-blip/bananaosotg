@@ -111,6 +111,43 @@ elif kind=="psx":
       pl_rearmed_cbs.show_overscan = 1;
    }
    var.key = "pcsx_rearmed_scale_hires";""")
+    # Reveal only VRAM already inside the game's drawing rectangle. Do not
+    # expose neighboring textures or overwrite VRAM by changing GPU commands.
+    p="plugins/gpulib/vout_pl.c"
+    rep(p,"#include <string.h>","#include <string.h>\n#include <stdlib.h>")
+    rep(p,"int vout_update(struct psx_gpu *gpu, int src_x, int src_y)",
+        """static int az_psx_rect(struct psx_gpu *g,int sx,int sy,int *left,int *top)
+{
+  int w=g->screen.w,h=g->screen.h;
+  int x=sx-(320-w)/2,y=sy-(240-h)/2;
+  unsigned a=g->ex_regs[3], b=g->ex_regs[4];
+  if (!getenv("AZEEZ_EXPANDED_VIEWPORT") || (g->status & PSX_GPU_STATUS_RGB24)
+      || g->state.enhancement_enable || g->state.downscale_enable
+      || w<240 || w>320 || h<192 || h>240 || x<0 || y<0
+      || x+320>1024 || y+240>512) return 0;
+  if (x<(int)(a&1023) || y<(int)((a>>10)&511) ||
+      x+319>(int)(b&1023) || y+239>(int)((b>>10)&511)) return 0;
+  *left=x; *top=y; return 1;
+}
+
+int vout_update(struct psx_gpu *gpu, int src_x, int src_y)""")
+    rep(p,"  check_mode_change(gpu, 0);\n  if (gpu->state.enhancement_active) {",
+        """  {
+    int left,top;
+    if (az_psx_rect(gpu,src_x,src_y,&left,&top)) {
+      if (gpu->state.w_out_old!=320 || gpu->state.h_out_old!=240 ||
+          gpu->state.status_vo_old!=gpu->status) {
+        cbs->pl_vout_set_mode(320,240,320,240,16);
+        gpu->state.w_out_old=320; gpu->state.h_out_old=240;
+        gpu->state.status_vo_old=gpu->status;
+      }
+      cbs->pl_vout_flip(vram,(top*1024+left)*2,0,0,0,320,240,gpu->state.dims_changed);
+      gpu->state.dims_changed=0;
+      return 1;
+    }
+  }
+  check_mode_change(gpu, 0);
+  if (gpu->state.enhancement_active) {""")
 elif kind=="genesis":
     # The Wide renderer already extends the playfield in eight-pixel units.
     # Request 8 extra columns only for H32, preserving the native H40 image.

@@ -96,7 +96,9 @@ fi
 # the 3D always through the Gengis Engine''')
 replace(bd,'cd $D\nexec /usr/bin/bananads "$ROM"',
     readmode+'''if az_native_integer; then
-    export BANANADS_KMS_SHADER=ds-integer DSFLIP_SHADER_DIR=/usr/lib/superdrastic/shaders
+    export AZEEZ_EXPANDED_VIEWPORT=1 BANANADS_KMS_SHADER=none
+    # Native or 2x 3D; never fractionally resample 3x/4x into the RG DS canvas.
+    export BANANADS_RENDER_SCALE=1
 fi
 cd $D
 exec /usr/bin/bananads "$ROM"''')

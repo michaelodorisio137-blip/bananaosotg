@@ -35,13 +35,20 @@ static inline uint32_t az_filtered(const poly_t *p, uint32_t U, uint32_t V, uint
         c[i]=az_texel(p,(uint16_t)(u+(i&1)),(uint16_t)(v+(i>>1)));
         if ((c[i]>>24)!=31) return nearest;
     }
-    uint32_t result=31u<<24;
-    for (unsigned ch=0;ch<24;ch+=8) {
-        unsigned sum=0;
-        for (unsigned i=0;i<4;i++) sum+=((c[i]>>ch)&63u)*w[i];
-        result|=((sum+div/2)/div)<<ch;
+    /* Pack R/B into independent 32-bit lanes. The largest weighted
+       sum is 63*65536, so neither lane can carry into the other.
+       Divisors are powers of two: exact old rounding, no division. */
+    uint64_t rb=0;
+    unsigned green=0;
+    for (unsigned i=0;i<4;i++) {
+        uint64_t lanes=(c[i]&63u)|((uint64_t)((c[i]>>16)&63u)<<32);
+        rb+=lanes*w[i];
+        green+=((c[i]>>8)&63u)*w[i];
     }
-    return result;
+    unsigned shift=div==256 ? 8 : 16;
+    rb+=((uint64_t)(div/2)<<32)|(div/2);
+    return (31u<<24)|((unsigned)(rb>>shift)&63u)|
+        (((green+div/2)>>shift)<<8)|((unsigned)((rb>>(32+shift))&63u)<<16);
 }
 
 '''
