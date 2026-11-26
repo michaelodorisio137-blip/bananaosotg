@@ -127,8 +127,14 @@ inline std::shared_ptr<Result> poll(std::string id){
                 break;
             }
             ok=true;
-        }catch(const std::exception& e){message=e.what();}
-        std::lock_guard<std::mutex> l(r->lock);r->id=id;r->ok=ok;r->message=message;r->url=url;r->buildPassed=passed;r->tracking=ok&&tracking;r->done=true;
+        }catch(const std::exception& e){
+            tracking=validId(id);
+            message=e.what();
+            if(tracking)message+="; automatic status retry scheduled.";
+        }
+        // A temporary HTTPS/API failure must not stop tracking an accepted build.
+        // Only a terminal workflow result or invalid request ID stops polling.
+        std::lock_guard<std::mutex> l(r->lock);r->id=id;r->ok=ok;r->message=message;r->url=url;r->buildPassed=passed;r->tracking=tracking;r->done=true;
     }).detach();return r;
 }
 // Request protected review of the exact successful proposal. This does not
