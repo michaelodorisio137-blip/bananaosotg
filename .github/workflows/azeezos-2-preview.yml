@@ -55,6 +55,7 @@ jobs:
           python3 verify-preservation.py BananaLinux
           python3 tools/next-n64-integration.py BananaLinux
           python3 tools/next-integer-viewport-integration.py BananaLinux
+          python3 tools/azeezos-2-expanded-integration.py BananaLinux
           python3 -m py_compile tools/next-integer-viewport-source.py tools/next-integer-rootfs.py
           python3 tools/azeezos-2-region.py BananaLinux
           python3 -m py_compile tools/azeezos-2-native-integer.py
@@ -153,6 +154,10 @@ jobs:
           cmp BananaLinux/output/rgds/target/usr/lib/libretro/mupen64plus_next_libretro.so rootfs/usr/lib/libretro/mupen64plus_next_libretro.so
           install -m 0644 BananaLinux/output/rgds/target/usr/lib/libretro/mgba_integer_libretro.so rootfs/usr/lib/libretro/mgba_integer_libretro.so
           cmp BananaLinux/output/rgds/target/usr/lib/libretro/mgba_integer_libretro.so rootfs/usr/lib/libretro/mgba_integer_libretro.so
+          for core in fceumm pcsx_rearmed genesis_plus_gx_wide bsnes_hd_beta; do
+            test -s "BananaLinux/output/rgds/target/usr/lib/libretro/${core}_libretro.so"
+            install -m 0644 "BananaLinux/output/rgds/target/usr/lib/libretro/${core}_libretro.so" "rootfs/usr/lib/libretro/${core}_libretro.so"
+          done
           python3 tools/next-integer-rootfs.py rootfs
           python3 tools/azeezos-2-native-integer.py rootfs
           test -s rootfs/usr/lib/superdrastic/shaders/ds-integer.frag
@@ -181,7 +186,7 @@ jobs:
           strings rootfs/usr/bin/banana-ui | grep -q 'mGBA Maximum Integer (NEW)'
           strings rootfs/usr/bin/banana-ui | grep -q 'Nearest neighbor (NEW)'
           printf '\n# AzeezOS 2.0 library sort\ngame_sort = title\n' >> rootfs/etc/banana/settings.conf
-          VERSION=2.0.0-dev.5
+          VERSION=2.0.0-dev.6
           if [ "${{ inputs.proposed_feature }}" = true ]; then VERSION="2.0.0-ai.${GITHUB_RUN_ID}"; fi
           printf '%s\n' "$VERSION" > rootfs/etc/banana/version
       - name: Package development preview (not published to OTA feed)

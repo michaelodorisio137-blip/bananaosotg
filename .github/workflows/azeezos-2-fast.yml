@@ -37,6 +37,8 @@ jobs:
           python3 verify-preservation.py BananaLinux
           python3 tools/next-n64-integration.py BananaLinux
           python3 tools/next-integer-viewport-integration.py BananaLinux
+          python3 -m py_compile tools/azeezos-2-expanded-{integration,source}.py
+          python3 tools/azeezos-2-expanded-integration.py BananaLinux
           python3 tools/azeezos-2-region.py BananaLinux
           python3 -m py_compile tools/azeezos-2-native-integer.py tools/azeezos-2-bananads-filter.py
           python3 tools/azeezos-2-native-integer.py --ui BananaLinux

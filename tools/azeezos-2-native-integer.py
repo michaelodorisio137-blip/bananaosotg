@@ -15,7 +15,7 @@ def replace(rel,old,new):
 if sys.argv[1]=="--ui":
     replace("ui/src/settings.cpp",
         'add(PS, "picture", "Integer scaling",',
-        '''add(PS, "picture", "Native integer mode", "Use whole native pixels across supported emulators. Expanded cores show extra background; other cores may retain borders.",
+        '''add(PS, "picture", "Native integer mode", "Use whole native pixels across supported emulators. Expanded renderers show real extra background where available; unsupported modes may retain borders.",
                 menu, "azeez_native_integer", { "Off", "On" }, { "off", "on" });
             items.back().hints = { "Keep each emulator's existing display settings.", "Sharp square pixels; no fractional zoom." };
             add(PS, "picture", "Integer scaling",''')
@@ -29,6 +29,21 @@ bf=base+"run-bananafront"
 ra=base+"run-retroarch"
 ds=base+"run-drastic"
 bd=base+"run-bananads"
+# Renderer flag and core selection before the frontend starts.
+for launcher in (ra,bf):
+    marker='CFG=/data/retroarch/retroarch.cfg'
+    replace(launcher,marker,'''if [ "$(setting azeez_native_integer)" = on ]; then
+    export AZEEZ_EXPANDED_VIEWPORT=1
+    case "$BANANA_SYSTEM" in
+        nes) VCORE=fceumm ;;
+        gb|gbc|gba) VCORE=mgba_integer ;;
+        *) VCORE= ;;
+    esac
+    if [ -n "$VCORE" ] && [ -f "/usr/lib/libretro/${VCORE}_libretro.so" ]; then
+        CORE="/usr/lib/libretro/${VCORE}_libretro.so"
+    fi
+fi
+'''+marker)
 replace(bf,'[ -n "$SH" ] && [ -d /usr/lib/superdrastic/shaders ]',
     '''if [ "$(setting azeez_native_integer)" = on ]; then
     SH=
