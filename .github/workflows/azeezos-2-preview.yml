@@ -57,6 +57,8 @@ jobs:
           python3 tools/next-integer-viewport-integration.py BananaLinux
           python3 -m py_compile tools/next-integer-viewport-source.py tools/next-integer-rootfs.py
           python3 tools/azeezos-2-region.py BananaLinux
+          python3 -m py_compile tools/azeezos-2-native-integer.py
+          python3 tools/azeezos-2-native-integer.py --ui BananaLinux
           python3 tools/azeezos-2-panel.py BananaLinux
           python3 tools/ai-cheats/integrate.py BananaLinux
           python3 tools/ai-cheats/integrate_trial.py BananaLinux
@@ -145,6 +147,13 @@ jobs:
           install -m 0644 BananaLinux/output/rgds/target/usr/lib/libretro/mgba_integer_libretro.so rootfs/usr/lib/libretro/mgba_integer_libretro.so
           cmp BananaLinux/output/rgds/target/usr/lib/libretro/mgba_integer_libretro.so rootfs/usr/lib/libretro/mgba_integer_libretro.so
           python3 tools/next-integer-rootfs.py rootfs
+          python3 tools/azeezos-2-native-integer.py rootfs
+          test -s rootfs/usr/lib/superdrastic/shaders/ds-integer.frag
+          strings rootfs/usr/bin/banana-ui | grep -q 'Native integer mode'
+          for f in run-retroarch run-bananafront run-drastic run-bananads; do
+            sh -n rootfs/usr/libexec/banana/$f
+            grep -q azeez_native_integer rootfs/usr/libexec/banana/$f
+          done
           grep -q 'nearest) t=nearest' rootfs/usr/libexec/banana/run-retroarch
           strings rootfs/usr/lib/libretro/mupen64plus_next_libretro.so | grep -q nearest
           python3 tools/ai-cheats/launcher_identity.py rootfs
