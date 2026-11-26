@@ -135,6 +135,16 @@ jobs:
             LICENSE
           sparse-checkout-cone-mode: false
           persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: szTheory/NDS-Cheat-Databases
+          ref: 0173af14d33e2c045e7c5e30c71d369624a33020
+          path: upstream-ds-cheats
+          sparse-checkout: |
+            Cheat Databases/usrcheat.dat
+            LICENSE
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
       - name: Download latest successful AzeezOS OTA
         env:
           GH_TOKEN: ${{ github.token }}
@@ -158,6 +168,7 @@ jobs:
           python3 tools/quick-gb-gbc-firmware-patch.py --verify rootfs
           cp BananaLinux/output/rgds/target/usr/bin/banana-ui rootfs/usr/bin/banana-ui
           python3 tools/cheat-database/package.py upstream-cheats rootfs
+          python3 tools/cheat-database/drastic.py upstream-ds-cheats rootfs
           install -m 0755 BananaLinux/output/rgds/target/usr/bin/retroarch rootfs/usr/bin/retroarch
           install -m 0755 BananaLinux/output/rgds/target/usr/bin/bananafront rootfs/usr/bin/bananafront
           strings rootfs/usr/bin/retroarch | grep -q AZEEZ_CHEATS_APPLY

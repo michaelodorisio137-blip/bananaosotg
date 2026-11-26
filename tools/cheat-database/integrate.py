@@ -41,10 +41,11 @@ rep("ui/src/settings_gamepanel.cpp","float lx = x / s, ly = y / s;",
             }
             return G_NONE;
         }""")
-rep("ui/src/settings_gamepanel.cpp","if (lx < 215) { gAiPanel=true; gAiReset=false; }",
-    """if(lx<160){gDb=std::make_shared<azdb::Page>();std::static_pointer_cast<azdb::Page>(gDb)->open(gSysId,gRomPath);gDbOpen=true;gAiReset=false;}
-            else if (lx < 320) { gAiPanel=true; gAiReset=false; }""")
-rep("ui/src/settings_gamepanel.cpp","else if(lx<430){gModOpen=true;","else if(lx<480){gModOpen=true;")
+rep("ui/src/settings_gamepanel.cpp","if (lx < 160) { gAiPanel=true; gAiReset=false; }\n            else if(lx<320){gModOpen=true;gAiPanel=true;gAiReset=false;gAiPrompt.clear();}\n            else if(lx<480){gDevOpen=true;gAiPanel=true;gAiReset=false;gAiPrompt.clear();}",
+    """if(lx<128){gDb=std::make_shared<azdb::Page>();std::static_pointer_cast<azdb::Page>(gDb)->open(gSysId,gRomPath);gDbOpen=true;gAiReset=false;}
+            else if(lx<256){gAiPanel=true;gAiReset=false;}
+            else if(lx<384){gModOpen=true;gAiPanel=true;gAiReset=false;gAiPrompt.clear();}
+            else if(lx<512){gDevOpen=true;gAiPanel=true;gAiReset=false;gAiPrompt.clear();}""")
 rep("ui/src/settings_gamepanel.cpp",'if (gKeysOpen) { gameKeysFrame(p); be->endScreen(); return; }',
     """if(gDbOpen && gDb){
             auto d=std::static_pointer_cast<azdb::Page>(gDb);
@@ -63,11 +64,9 @@ rep("ui/src/settings_gamepanel.cpp",'if (gKeysOpen) { gameKeysFrame(p); be->endS
             be->endScreen();return;
         }
         if (gKeysOpen) { gameKeysFrame(p); be->endScreen(); return; }""")
-rep("ui/src/settings_gamepanel.cpp",'box("slot",false,8,425,205,48);box("slot",false,218,425,205,48);box("slot",gAiReset,428,425,204,48);',
-    'box("slot",false,8,425,150,48);box("slot",false,168,425,150,48);box("slot",false,328,425,150,48);box("slot",gAiReset,488,425,144,48);')
-rep("ui/src/settings_gamepanel.cpp",'text("AI Cheats",true,19,24,438,p.accent);text("Mods",true,19,244,438,p.accent);',
-    'text("Cheats",true,19,24,438,p.accent);text("AI Cheats",true,19,184,438,p.accent);text("Mods",true,19,348,438,p.accent);')
-rep("ui/src/settings_gamepanel.cpp",'text(gAiReset?"Tap to restart":"Restart game",true,18,438,438,','text(gAiReset?"Confirm":"Restart",true,18,500,438,')
+rep("ui/src/settings_gamepanel.cpp",'const char* labs[]={"AI Cheats","Mods","AI Dev",gAiReset?"Confirm":"Restart"};\n            for(int i=0;i<4;i++){box("slot",i==3&&gAiReset,8+i*160,425,150,48);text(labs[i],true,18,20+i*160,440,i==3&&gAiReset?p.onPick:p.ink);}',
+    '''const char* labs[]={"Cheats","AI Cheats","Mods","AI Dev",gAiReset?"Confirm":"Restart"};
+            for(int i=0;i<5;i++){box("slot",i==4&&gAiReset,5+i*128,425,120,48);text(labs[i],true,16,14+i*128,440,i==4&&gAiReset?p.onPick:p.ink);}''')
 p=ui/"main.cpp";s=p.read_text()
 anchor='a == Settings::G_RESET ? "RESET\\n"'
 assert s.count(anchor)==2

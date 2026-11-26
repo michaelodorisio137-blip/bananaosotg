@@ -27,8 +27,19 @@ jobs:
             LICENSE
           sparse-checkout-cone-mode: false
           persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: szTheory/NDS-Cheat-Databases
+          ref: 0173af14d33e2c045e7c5e30c71d369624a33020
+          path: upstream-ds-cheats
+          sparse-checkout: |
+            Cheat Databases/usrcheat.dat
+            LICENSE
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
       - run: |
           python3 tools/cheat-database/package.py upstream-cheats stage
+          python3 tools/cheat-database/drastic.py upstream-ds-cheats stage
           tar -cJf AzeezOS-offline-cheats.tar.xz -C stage .
           sha256sum AzeezOS-offline-cheats.tar.xz > SHA256SUMS-cheats.txt
           sha256sum -c SHA256SUMS-cheats.txt
