@@ -11,7 +11,7 @@ inline constexpr const char* base="https://api.github.com/repos/michaelodorisio1
 struct Result {
     std::mutex lock;
     bool done=false,ok=false;
-    std::string id,message,url;
+    std::string id,message,url,conversation;
 };
 inline std::string newId(){
     std::random_device r;
@@ -47,14 +47,57 @@ inline std::string api(const std::string& path,const std::string& request,long& 
     if(rc)throw std::runtime_error("GitHub connection failed");
     return body;
 }
-inline std::shared_ptr<Result> submit(std::string feature){
+inline std::string tail(std::string s,size_t n){
+    if(s.size()<=n)return s;
+    size_t start=s.size()-n;
+    while(start<s.size()&&(static_cast<unsigned char>(s[start])&0xc0)==0x80)++start;
+    return s.substr(start);
+}
+inline std::shared_ptr<Result> chat(std::string prompt,std::string history){
     auto r=std::make_shared<Result>();
-    std::thread([r,feature]{
+    std::thread([r,prompt,history]{
+        bool ok=false;std::string message,conversation;
+        try{
+            if(prompt.empty()||prompt.size()>800)throw std::runtime_error("Enter a message (1-800 characters).");
+            const char* key=getenv("AZEEZOS_OPENAI_API_KEY");
+            if(!key||!*key)key=getenv("OPENAI_API_KEY");
+            if(!key||!*key||std::string(key).find_first_of("\r\n")!=std::string::npos)throw std::runtime_error("Configure the OpenAI API key in the service environment.");
+            const char* model=getenv("AZEEZOS_AI_MODEL");
+            Curl c;if(!c.load())throw std::runtime_error("HTTPS unavailable");
+            void* lib=dlopen("libcurl.so.4",RTLD_NOW|RTLD_LOCAL);
+            if(!lib)throw std::runtime_error("HTTPS unavailable");
+            auto append=reinterpret_cast<void*(*)(void*,const char*)>(dlsym(lib,"curl_slist_append"));
+            auto freeList=reinterpret_cast<void(*)(void*)>(dlsym(lib,"curl_slist_free_all"));
+            void* h=c.init();
+            if(!append||!freeList||!h){if(h)c.cleanup(h);dlclose(lib);throw std::runtime_error("HTTPS initialization failed");}
+            std::string auth="Authorization: Bearer "+std::string(key),body;
+            void* headers=append(nullptr,auth.c_str());
+            void* next=headers?append(headers,"Content-Type: application/json"):nullptr;
+            if(!next){if(headers)freeList(headers);c.cleanup(h);dlclose(lib);throw std::runtime_error("HTTPS header allocation failed");}
+            headers=next;
+            std::string input="You are AzeezOS's handheld development assistant. Discuss firmware changes concisely. Do not claim a change was built or installed. The separate Build control sends a scoped proposal for compilation and protected review. Reply in at most 65 words.\n\nRecent conversation:\n"+tail(history,6000)+"\nUser: "+prompt;
+            std::string req="{\"model\":"+aicheat::quoted(model&&*model?model:"gpt-5-mini")+",\"store\":false,\"max_output_tokens\":1200,\"input\":"+aicheat::quoted(input)+"}";
+            c.setopt(h,10002,"https://api.openai.com/v1/responses");c.setopt(h,10023,headers);c.setopt(h,10015,req.c_str());
+            c.setopt(h,10001,&body);c.setopt(h,20011,aicheat::bounded);
+            c.setopt(h,13,90L);c.setopt(h,78,10L);c.setopt(h,99,1L);c.setopt(h,64,1L);c.setopt(h,81,2L);
+            int rc=c.perform(h);long status=0;c.getinfo(h,0x200002,&status);c.cleanup(h);freeList(headers);dlclose(lib);
+            if(rc||status!=200)throw std::runtime_error("AI chat failed (HTTP "+std::to_string(status)+")");
+            message=aicheat::answer(body);if(message.empty())throw std::runtime_error("No completed AI reply");
+            conversation=tail(history+"\nUser: "+prompt+"\nAssistant: "+message+"\n",6000);
+            ok=true;
+        }catch(const std::exception& e){message=e.what();}
+        std::lock_guard<std::mutex> l(r->lock);r->ok=ok;r->message=message;r->conversation=conversation;r->done=true;
+    }).detach();return r;
+}
+inline std::shared_ptr<Result> submit(std::string feature,std::string parent="",std::string context=""){
+    auto r=std::make_shared<Result>();
+    std::thread([r,feature,parent,context]{
         std::string id,message;bool ok=false;
         try{
             if(feature.empty()||feature.size()>800)throw std::runtime_error("Feature request must be 1-800 characters.");
+            if(!parent.empty()&&!validId(parent))throw std::runtime_error("Invalid prior request");
             id=newId();long status=0;
-            std::string payload="{\"ref\":\"azeezos-2.0\",\"inputs\":{\"feature_request\":"+aicheat::quoted(feature)+",\"request_id\":"+aicheat::quoted(id)+"}}";
+            std::string payload="{\"ref\":\"azeezos-2.0\",\"inputs\":{\"feature_request\":"+aicheat::quoted(feature)+",\"request_id\":"+aicheat::quoted(id)+",\"parent_request_id\":"+aicheat::quoted(parent)+",\"conversation_context\":"+aicheat::quoted(tail(context,2000))+"}}";
             api("/actions/workflows/validate-custom.yml/dispatches",payload,status);
             if(status!=204&&status!=200)throw std::runtime_error("Request rejected (HTTP "+std::to_string(status)+"). Check token and workflow.");
             ok=true;message="Submitted. Tap Status for actual build progress.";

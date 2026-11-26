@@ -38,6 +38,14 @@ on:
         description: "Device request identifier"
         type: string
         required: false
+      parent_request_id:
+        description: "Previous successful device proposal to extend"
+        type: string
+        required: false
+      conversation_context:
+        description: "Recent device conversation (sent only with build confirmation)"
+        type: string
+        required: false
       approve_run:
         description: "Reviewed successful AI proposal run ID to sign (optional)"
         type: string
@@ -138,6 +146,7 @@ jobs:
     if: ${{ github.ref == 'refs/heads/azeezos-2.0' && inputs.feature_request != '' && !inputs.approve_run }}
     permissions:
       contents: read
+      actions: read
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -170,6 +179,9 @@ jobs:
         env:
           FEATURE_REQUEST: ${{ inputs.feature_request }}
           REQUEST_ID: ${{ inputs.request_id }}
+          PARENT_REQUEST_ID: ${{ inputs.parent_request_id }}
+          CONVERSATION_CONTEXT: ${{ inputs.conversation_context }}
+          GH_TOKEN: ${{ github.token }}
           AZEEZOS_OPENAI_API_KEY: ${{ secrets.AZEEZOS_OPENAI_API_KEY }}
         run: python3 tools/ai-dev/generate.py BananaLinux
       - uses: actions/upload-artifact@v4
