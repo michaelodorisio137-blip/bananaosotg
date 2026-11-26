@@ -5,6 +5,8 @@ on:
     paths:
       - '.github/workflows/azeezos-viewport-validation.yml'
       - 'tools/azeezos-2-ds-expanded.py'
+      - 'tools/azeezos-2-expanded-source.py'
+      - 'tools/azeezos-2-bananads-filter.py'
   workflow_dispatch:
 permissions:
   contents: read
@@ -30,6 +32,11 @@ jobs:
           repository: libretro/pcsx_rearmed
           ref: c8816799b50388e61cfe237fe2cdbb7d8175f20a
           path: PCSX
+      - uses: actions/checkout@v4
+        with:
+          repository: libretro/libretro-fceumm
+          ref: 7a542dab1e87679921962a9f056186eca425c0c2
+          path: FCEUmm
       - name: Verify patches against pinned actual source
         run: |
           set -eux
@@ -40,10 +47,19 @@ jobs:
           python3 tools/azeezos-2-ds-expanded.py BananaDS
           python3 tools/azeezos-2-bananads-filter.py --source BananaDS
           python3 tools/azeezos-2-expanded-source.py psx PCSX
+          python3 tools/azeezos-2-expanded-source.py nes FCEUmm
+          git -C FCEUmm diff --check
+          python3 tools/azeezos-2-expanded-source.py nes FCEUmm
+          grep -q 'azeez_nes_sample_sides();' FCEUmm/src/ppu.c
           git -C BananaDS diff --check
           git -C PCSX diff --check
           grep -q 'rx=64; ry=48; rw=512; rh=384' BananaDS/bananads/src/frontend_kms.cpp
           grep -q 'az_psx_rect' PCSX/plugins/gpulib/vout_pl.c
+      - name: Compile expanded NES core
+        run: |
+          set -eux
+          make -C FCEUmm -j2 platform=unix
+          test -s FCEUmm/fceumm_libretro.so
       - name: Compile actual changed DS translation units
         run: |
           sudo apt-get update -qq

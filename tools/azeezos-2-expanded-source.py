@@ -46,10 +46,14 @@ static void azeez_nes_sample_sides(void) {
         azeez_nes_sides[scanline][i]=pen;
     }
 }""")
-    rep(p, "\tif (MMC5Hack && (ScreenON || SpriteON)) MMC5_hb(scanline);",
-        """\tif (scanline >= 0 && scanline < 240 && getenv("AZEEZ_EXPANDED_VIEWPORT"))
+    # The same MMC5 statement also occurs after the frame loop; match DoLine only.
+    rep(p, "\n\tif (MMC5Hack && (ScreenON || SpriteON)) MMC5_hb(scanline);\n\n\tX6502_Run(256);",
+        """
+\tif (scanline >= 0 && scanline < 240 && getenv("AZEEZ_EXPANDED_VIEWPORT"))
         azeez_nes_sample_sides();
-\tif (MMC5Hack && (ScreenON || SpriteON)) MMC5_hb(scanline);""")
+\tif (MMC5Hack && (ScreenON || SpriteON)) MMC5_hb(scanline);
+
+\tX6502_Run(256);""")
     p="src/drivers/libretro/libretro.c"
     rep(p,"void retro_get_system_av_info(struct retro_system_av_info *info)\n{",
         """extern uint8_t azeez_nes_sides[240][64];
