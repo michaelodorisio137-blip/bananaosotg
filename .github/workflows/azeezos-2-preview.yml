@@ -14,6 +14,7 @@ on:
       - 'tools/next-integer-*.py'
       - 'tools/next-n64-*.py'
       - 'tools/ai-cheats/**'
+      - 'tools/cheat-database/**'
       - 'tools/mods/**'
       - 'tools/ai-dev/**'
       - '.github/workflows/azeezos-2-preview.yml'
@@ -22,7 +23,7 @@ permissions:
   actions: read
 concurrency:
   group: ${{ inputs.proposed_feature && format('azeezos-ai-{0}', github.run_id) || 'azeezos-2-preview' }}
-  cancel-in-progress: ${{ !inputs.proposed_feature }}
+  cancel-in-progress: false
 jobs:
   build:
     runs-on: ubuntu-24.04
@@ -70,6 +71,7 @@ jobs:
           python3 -m py_compile tools/ai-dev/{generate,sign,stage}.py
           python3 tools/ai-cheats/integrate_nds.py BananaLinux
           python3 tools/ai-cheats/integrate_maps.py BananaLinux
+          python3 tools/cheat-database/integrate.py BananaLinux
           g++ -std=c++17 -Wall -Wextra -Werror tools/mods/patch_test.cpp -lz -o /tmp/mod-patch-test
           /tmp/mod-patch-test
           g++ -std=c++17 -Wall -Wextra -Werror tools/mods/install_test.cpp -lz -o /tmp/mod-install-test
@@ -123,6 +125,16 @@ jobs:
           file "$CORE" "$UI"
           strings "$CORE" | grep -q nearest
           strings "$UI" | grep -q 'Nearest neighbor (NEW)'
+      - uses: actions/checkout@v4
+        with:
+          repository: libretro/libretro-database
+          ref: f89f09cbe13f9f7863ecf20d0ebf2c5ce53be029
+          path: upstream-cheats
+          sparse-checkout: |
+            cht
+            LICENSE
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
       - name: Download latest successful AzeezOS OTA
         env:
           GH_TOKEN: ${{ github.token }}
@@ -145,6 +157,12 @@ jobs:
           test -s rootfs/usr/share/libretro/shaders/glsl/rgds/sharp-image-adjust.glslp
           python3 tools/quick-gb-gbc-firmware-patch.py --verify rootfs
           cp BananaLinux/output/rgds/target/usr/bin/banana-ui rootfs/usr/bin/banana-ui
+          python3 tools/cheat-database/package.py upstream-cheats rootfs
+          install -m 0755 BananaLinux/output/rgds/target/usr/bin/retroarch rootfs/usr/bin/retroarch
+          install -m 0755 BananaLinux/output/rgds/target/usr/bin/bananafront rootfs/usr/bin/bananafront
+          strings rootfs/usr/bin/retroarch | grep -q AZEEZ_CHEATS_APPLY
+          strings rootfs/usr/bin/bananafront | grep -q AZEEZ_CHEATS_APPLY
+          strings rootfs/usr/bin/banana-ui | grep -q AzeezFront
           test -x BananaLinux/output/rgds/target/usr/bin/bananads
           install -m 0755 BananaLinux/output/rgds/target/usr/bin/bananads rootfs/usr/bin/bananads
           cmp BananaLinux/output/rgds/target/usr/bin/bananads rootfs/usr/bin/bananads
@@ -186,7 +204,7 @@ jobs:
           strings rootfs/usr/bin/banana-ui | grep -q 'mGBA Maximum Integer (NEW)'
           strings rootfs/usr/bin/banana-ui | grep -q 'Nearest neighbor (NEW)'
           printf '\n# AzeezOS 2.0 library sort\ngame_sort = title\n' >> rootfs/etc/banana/settings.conf
-          VERSION=2.0.0-dev.6
+          VERSION=2.0.0-dev.7
           if [ "${{ inputs.proposed_feature }}" = true ]; then VERSION="2.0.0-ai.${GITHUB_RUN_ID}"; fi
           printf '%s\n' "$VERSION" > rootfs/etc/banana/version
       - name: Package development preview (not published to OTA feed)

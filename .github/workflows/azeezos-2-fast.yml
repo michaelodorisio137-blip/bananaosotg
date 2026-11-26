@@ -7,6 +7,7 @@ on:
       - 'tools/next-integer-*.py'
       - 'tools/next-n64-*.py'
       - 'tools/ai-cheats/**'
+      - 'tools/cheat-database/**'
       - 'tools/mods/**'
       - 'tools/ai-dev/**'
       - '.github/workflows/azeezos-2-fast.yml'
@@ -50,6 +51,7 @@ jobs:
           python3 tools/ai-dev/integrate.py BananaLinux
           python3 tools/ai-cheats/integrate_nds.py BananaLinux
           python3 tools/ai-cheats/integrate_maps.py BananaLinux
+          python3 tools/cheat-database/integrate.py BananaLinux
           python3 tools/ai-cheats/launcher_identity.py BananaLinux/system/rootfs
           sh -n BananaLinux/system/rootfs/usr/libexec/banana/run-retroarch
           for f in settings_gamepanel.cpp main.cpp library.cpp settings.cpp settings_defaults.cpp nds/overlay.cpp complink.cpp; do
