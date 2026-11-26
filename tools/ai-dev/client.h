@@ -87,6 +87,45 @@ inline std::shared_ptr<Result> poll(std::string id){
         std::lock_guard<std::mutex> l(r->lock);r->id=id;r->ok=ok;r->message=message;r->url=url;r->done=true;
     }).detach();return r;
 }
+// Request protected review of the exact successful proposal. This does not
+// grant approval; GitHub's release-review environment still requires a reviewer.
+inline std::shared_ptr<Result> review(std::string id){
+    auto r=std::make_shared<Result>();
+    std::thread([r,id]{
+        bool ok=false;std::string message,url;
+        try{
+            if(!validId(id))throw std::runtime_error("No active feature request");
+            long status=0;
+            auto body=api("/actions/workflows/validate-custom.yml/runs?branch=azeezos-2.0&event=workflow_dispatch&per_page=30","",status);
+            if(status!=200)throw std::runtime_error("Review lookup failed (HTTP "+std::to_string(status)+")");
+            auto j=parseJson(body);auto runs=j?j->get("workflow_runs"):nullptr;
+            if(!runs||!runs->isArr())throw std::runtime_error("Invalid GitHub reply");
+            const std::string prefix="https://github.com/michaelodorisio137-blip/bananaosotg/actions/runs/";
+            std::string rid;
+            for(auto& w:runs->arr){
+                if(!w||w->str("display_title")!="AzeezOS AI "+id||w->str("status")!="completed"||w->str("conclusion")!="success")continue;
+                auto candidate=w->str("html_url");
+                if(candidate.rfind(prefix,0)!=0)continue;
+                auto n=candidate.substr(prefix.size());
+                if(n.empty()||n.size()>20||n.find_first_not_of("0123456789")!=std::string::npos)continue;
+                rid=n;url=candidate;break;
+            }
+            if(rid.empty())throw std::runtime_error("No successful matching build to review");
+            for(auto& w:runs->arr){
+                if(!w||w->str("display_title")!="AzeezOS Approve "+rid)continue;
+                if(w->str("status")!="completed"){message="Review already requested. Await protected reviewer.";ok=true;break;}
+                if(w->str("conclusion")=="success"){message="Review signed. Tap Stage update.";ok=true;break;}
+            }
+            if(!ok){
+                std::string payload="{\"ref\":\"azeezos-2.0\",\"inputs\":{\"approve_run\":"+aicheat::quoted(rid)+"}}";
+                api("/actions/workflows/validate-custom.yml/dispatches",payload,status);
+                if(status!=204&&status!=200)throw std::runtime_error("Review dispatch rejected (HTTP "+std::to_string(status)+")");
+                message="Review requested. Approve in protected GitHub review environment, then Stage update.";ok=true;
+            }
+        }catch(const std::exception& e){message=e.what();}
+        std::lock_guard<std::mutex> l(r->lock);r->id=id;r->ok=ok;r->message=message;r->url=url;r->done=true;
+    }).detach();return r;
+}
 inline std::shared_ptr<Result> stage(std::string id,std::string data){
     auto r=std::make_shared<Result>();
     std::thread([r,id,data]{

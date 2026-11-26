@@ -5,6 +5,8 @@ from pathlib import Path
 root=Path(sys.argv[1]).resolve()
 request=os.environ.get("FEATURE_REQUEST","").strip()
 key=os.environ.get("AZEEZOS_OPENAI_API_KEY","")
+if not re.fullmatch(r"[a-f0-9]{32}",os.environ.get("REQUEST_ID","")):
+    raise SystemExit("Invalid device request ID.")
 if not key or not request or len(request)>800:
     raise SystemExit("Configure AZEEZOS_OPENAI_API_KEY in Actions and provide a request (1-800 chars).")
 allowed=["settings_gamepanel.cpp","settings.h","azeezos_ai_cheats.h","cheat_panel.h","live_scan.h","azeez_mod_browser.h"]
@@ -41,6 +43,17 @@ if any(line.startswith(("new file mode","deleted file mode","rename from","renam
     raise SystemExit("File creation/deletion/rename/binary/mode changes are not allowed")
 out=Path("ai-dev-output");out.mkdir(exist_ok=True)
 (out/"feature.patch").write_text(diff+"\n")
-subprocess.run(["git","-C",str(root),"apply","--check",str((out/"feature.patch").resolve())],check=True)
+patch_path=str((out/"feature.patch").resolve())
+# Validate the actual paths Git will apply, not just AI-supplied diff headers.
+stats=subprocess.check_output(["git","-C",str(root),"apply","--numstat","-z",patch_path])
+actual=[]
+for entry in stats.rstrip(b"\0").split(b"\0"):
+    fields=entry.split(b"\t",2)
+    if len(fields)!=3 or not fields[0].isdigit() or not fields[1].isdigit():
+        raise SystemExit("Invalid or binary patch entry")
+    actual.append(fields[2].decode("utf-8"))
+if not actual or any(p not in ["ui/src/"+n for n in allowed] for p in actual):
+    raise SystemExit("Git patch changes an unapproved path")
+subprocess.run(["git","-C",str(root),"apply","--check",patch_path],check=True)
 (out/"request.txt").write_text(request+"\n")
 print("Generated a patch that applies to the pinned integrated UI; review and build required.")

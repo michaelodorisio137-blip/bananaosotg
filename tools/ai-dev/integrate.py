@@ -28,7 +28,10 @@ sub("settings_gamepanel.cpp","if(gModPending && gModJob){",'''if(gDevPending&&gD
 sub("settings_gamepanel.cpp","if(gModOpen && !gKeysOpen){",'''if(gDevOpen&&!gKeysOpen){
             if(down)return G_NONE;
             if(ly>=370&&ly<420&&!gDevPending&&!gDevId.empty()){
-                gDevJob=azdev::stage(gDevId,data);gDevPending=true;gDevNote="Checking reviewed signature and downloading...";
+                gDevConfirm=false;
+                if(lx<320){gDevJob=azdev::review(gDevId);gDevNote="Requesting protected review of successful build...";}
+                else{gDevJob=azdev::stage(gDevId,data);gDevNote="Checking reviewed signature and downloading...";}
+                gDevPending=true;
             }else if(ly>=425&&!gDevPending){
                 if(lx<160){gDevOpen=false;gAiPanel=false;gDevConfirm=false;}
                 else if(lx<320){gKeysOpen=true;gKeyPage=0;gKeyShift=0;gKeyTyped=gAiPrompt;gDevConfirm=false;}
@@ -52,7 +55,10 @@ sub("settings_gamepanel.cpp","if(gModOpen){\n            box",'''if(gDevOpen){
             wrapped(gDevNote.empty()?"Build an isolated, reviewable firmware proposal. No automatic installation.":gDevNote,20,24,190,590,4,p.accent);
             if(!gDevId.empty())text("Request: "+gDevId,true,15,24,295,p.muted);
             if(!gDevUrl.empty())text(fit(gDevUrl,true,14,590),true,14,24,325,p.ink);
-            if(!gDevId.empty()){box("slot",false,18,370,604,45);text("Stage reviewed update",true,18,35,383,p.accent);}
+            if(!gDevId.empty()){
+                box("slot",false,18,370,294,45);text("Request review",true,18,35,383,p.accent);
+                box("slot",false,328,370,294,45);text("Stage update",true,18,345,383,p.accent);
+            }
             const char* labs[]={"Back","Type",gDevConfirm?"Confirm":"Build","Status"};
             for(int i=0;i<4;i++){box("slot",false,8+i*160,425,150,48);text(labs[i],true,18,20+i*160,440,p.ink);}
             be->endScreen();return;

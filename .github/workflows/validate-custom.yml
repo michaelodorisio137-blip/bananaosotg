@@ -44,8 +44,8 @@ on:
         required: false
 
 concurrency:
-  group: rgds-validate-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ inputs.request_id && format('azeezos-proposal-{0}', inputs.request_id) || inputs.approve_run && format('azeezos-review-{0}', inputs.approve_run) || format('rgds-validate-{0}', github.ref) }}
+  cancel-in-progress: false
 
 jobs:
   validate:
@@ -157,6 +157,8 @@ jobs:
           python3 tools/next-n64-integration.py BananaLinux
           python3 tools/next-integer-viewport-integration.py BananaLinux
           python3 tools/azeezos-2-region.py BananaLinux
+          python3 tools/azeezos-2-native-integer.py --ui BananaLinux
+          python3 tools/azeezos-2-bananads-filter.py --integrate BananaLinux
           python3 tools/azeezos-2-panel.py BananaLinux
           python3 tools/ai-cheats/integrate.py BananaLinux
           python3 tools/ai-cheats/integrate_trial.py BananaLinux
@@ -167,6 +169,7 @@ jobs:
       - name: Generate and validate proposed feature patch
         env:
           FEATURE_REQUEST: ${{ inputs.feature_request }}
+          REQUEST_ID: ${{ inputs.request_id }}
           AZEEZOS_OPENAI_API_KEY: ${{ secrets.AZEEZOS_OPENAI_API_KEY }}
         run: python3 tools/ai-dev/generate.py BananaLinux
       - uses: actions/upload-artifact@v4
