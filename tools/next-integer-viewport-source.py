@@ -12,17 +12,17 @@ rep("#include <mgba/internal/gb/gb.h>","#include <mgba/internal/gb/gb.h>\n#inclu
 rep("#include <mgba/internal/gba/gba.h>","#include <mgba/internal/gba/gba.h>\n#include <mgba/internal/gba/renderers/video-software.h>")
 rep("static struct mCore* core;\n", "static struct mCore* core;\n"+r"""
 /* RG DS experimental GB/GBC background overscan.
- * Native PPU output is kept perfectly intact and centred at 27,8.
+ * Native PPU output is kept perfectly intact and centred at 80,48 on a 320x240 canvas.
  * The surrounding region is a VRAM tilemap preview, not extra GB LCD pixels:
  * window/sprites outside 160x144 are intentionally not fabricated.
  * Do NOT modify GB_VIDEO_HORIZONTAL_PIXELS or GB_VIDEO_VERTICAL_PIXELS:
  * those constants govern genuine Game Boy timing and hardware attribute maps.
  */
 #ifdef M_CORE_GB
-#define RGDS_GB_EXT_W 214
-#define RGDS_GB_EXT_H 160
-#define RGDS_GB_INSET_X 27
-#define RGDS_GB_INSET_Y 8
+#define RGDS_GB_EXT_W 320
+#define RGDS_GB_EXT_H 240
+#define RGDS_GB_INSET_X 80
+#define RGDS_GB_INSET_Y 48
 static mColor rgdsGBBorder[RGDS_GB_EXT_W * RGDS_GB_EXT_H];
 
 static bool rgdsGBCanExtend(void) {
@@ -181,11 +181,11 @@ static void rgdsGBARender(const mColor* native) {
 static mColor rgdsIntegerFrame[640*480];
 static void rgdsIntegerOutput(const mColor* native) {
     const mColor* src = NULL;
-    unsigned stride=0, scale=0, crop=0;
+    unsigned stride=0, scale=0;
 #ifdef M_CORE_GB
     if (rgdsGBCanExtend()) {
         rgdsGBRenderBorder(native);
-        src=rgdsGBBorder; stride=RGDS_GB_EXT_W; scale=3; crop=1;
+        src=rgdsGBBorder; stride=RGDS_GB_EXT_W; scale=2;
     }
 #endif
 #ifdef M_CORE_GBA
@@ -195,11 +195,11 @@ static void rgdsIntegerOutput(const mColor* native) {
     }
 #endif
     if (!src) return;
-    /* 214*3 = 642. Crop 1 physical pixel from each OUTER border, never the
-       original GB LCD. 160*3 = 480. GBA 320*2=640, 240*2=480. */
+    /* GB, GBC and GBA all use 320x240 at exact 2x. The native LCD is
+       centered and all surrounding pixels are sampled background, not zoom. */
     for (unsigned y=0;y<480;++y)
         for(unsigned x=0;x<640;++x)
-            rgdsIntegerFrame[y*640+x]=src[(y/scale)*stride+(x+crop)/scale];
+            rgdsIntegerFrame[y*640+x]=src[(y/scale)*stride+x/scale];
     videoCallback(rgdsIntegerFrame,640,480,640*sizeof(mColor));
 }
 """)
