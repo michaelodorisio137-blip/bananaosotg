@@ -78,5 +78,7 @@ edit(p,"\tmCoreConfigDeinit(&core->config);\n\tcore->deinit(core);","\tif (azRea
 # In 16-bit libretro builds this would overflow during a screenshot.
 p="src/gba/renderers/gl.c"
 edit(p,"glRenderer->scale * glRenderer->scale * BYTES_PER_PIXEL","glRenderer->scale * glRenderer->scale * 4")
-# Match the allocation size on free, if the same expression occurs in source
+# Match the RGBA allocation on both deinit and scale changes.
+edit(p,"mappedMemoryFree(glRenderer->temporaryBuffer, GBA_VIDEO_HORIZONTAL_PIXELS * GBA_VIDEO_VERTICAL_PIXELS * glRenderer->scale * glRenderer->scale);","mappedMemoryFree(glRenderer->temporaryBuffer, GBA_VIDEO_HORIZONTAL_PIXELS * GBA_VIDEO_VERTICAL_PIXELS * glRenderer->scale * glRenderer->scale * 4);")
+edit(p,"renderer->scale * renderer->scale * BYTES_PER_PIXEL","renderer->scale * renderer->scale * 4")
 print("GLES3 bridge patched; native affine rendering at 2x, no viewport extension or HLE claimed.")
