@@ -1,0 +1,42 @@
+name: Offline cheat database package
+on:
+  push:
+    branches: [azeezos-2.0]
+    paths:
+      - '.github/workflows/azeezos-cheat-database.yml'
+      - 'tools/cheat-database/**'
+  workflow_dispatch:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: libretro/libretro-database
+          ref: f89f09cbe13f9f7863ecf20d0ebf2c5ce53be029
+          path: upstream-cheats
+          sparse-checkout: |
+            cht
+            LICENSE
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - run: |
+          python3 tools/cheat-database/package.py upstream-cheats stage
+          tar -cJf AzeezOS-offline-cheats.tar.xz -C stage .
+          sha256sum AzeezOS-offline-cheats.tar.xz > SHA256SUMS-cheats.txt
+          sha256sum -c SHA256SUMS-cheats.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AzeezOS-offline-cheat-database
+          compression-level: 0
+          retention-days: 90
+          path: |
+            AzeezOS-offline-cheats.tar.xz
+            SHA256SUMS-cheats.txt
