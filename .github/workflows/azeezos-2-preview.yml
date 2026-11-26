@@ -59,6 +59,8 @@ jobs:
           python3 tools/azeezos-2-region.py BananaLinux
           python3 -m py_compile tools/azeezos-2-native-integer.py
           python3 tools/azeezos-2-native-integer.py --ui BananaLinux
+          python3 -m py_compile tools/azeezos-2-bananads-filter.py
+          python3 tools/azeezos-2-bananads-filter.py --integrate BananaLinux
           python3 tools/azeezos-2-panel.py BananaLinux
           python3 tools/ai-cheats/integrate.py BananaLinux
           python3 tools/ai-cheats/integrate_trial.py BananaLinux
@@ -142,6 +144,11 @@ jobs:
           test -s rootfs/usr/share/libretro/shaders/glsl/rgds/sharp-image-adjust.glslp
           python3 tools/quick-gb-gbc-firmware-patch.py --verify rootfs
           cp BananaLinux/output/rgds/target/usr/bin/banana-ui rootfs/usr/bin/banana-ui
+          test -x BananaLinux/output/rgds/target/usr/bin/bananads
+          install -m 0755 BananaLinux/output/rgds/target/usr/bin/bananads rootfs/usr/bin/bananads
+          cmp BananaLinux/output/rgds/target/usr/bin/bananads rootfs/usr/bin/bananads
+          strings rootfs/usr/bin/bananads | grep -q 'render.texfilter'
+          strings rootfs/usr/bin/banana-ui | grep -q '3D texture sampling (experimental)'
           install -m 0644 BananaLinux/output/rgds/target/usr/lib/libretro/mupen64plus_next_libretro.so rootfs/usr/lib/libretro/mupen64plus_next_libretro.so
           cmp BananaLinux/output/rgds/target/usr/lib/libretro/mupen64plus_next_libretro.so rootfs/usr/lib/libretro/mupen64plus_next_libretro.so
           install -m 0644 BananaLinux/output/rgds/target/usr/lib/libretro/mgba_integer_libretro.so rootfs/usr/lib/libretro/mgba_integer_libretro.so
