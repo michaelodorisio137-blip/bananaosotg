@@ -23,11 +23,14 @@ for name,ident,owner,repo,commit,soname,build,so,license in cores:
     pkg=root/("buildroot/package/libretro-"+name)
     pkg.mkdir(exist_ok=True)
     sym="LIBRETRO_"+ident
+    kind="genesis" if name=="genesis-plus-gx-wide" else "snes"
+    shutil.copyfile(Path(__file__).with_name("azeezos-2-expanded-source.py"),pkg/"azeezos-2-expanded-source.py")
     mk=f"""{sym}_VERSION = {commit}
 {sym}_SITE = $(call github,{owner},{repo},$({sym}_VERSION))
 {sym}_LICENSE = {license}
 
 define {sym}_BUILD_CMDS
+\tpython3 $(BR2_EXTERNAL_BANANA_PATH)/package/libretro-{name}/azeezos-2-expanded-source.py {kind} $(@D)
 \t{build}
 endef
 

@@ -36,6 +36,8 @@ for launcher in (ra,bf):
     export AZEEZ_EXPANDED_VIEWPORT=1
     case "$BANANA_SYSTEM" in
         nes) VCORE=fceumm ;;
+        megadrive) VCORE=genesis_plus_gx_wide ;;
+        snes) VCORE=bsnes_hd_beta ;;
         gb|gbc|gba) VCORE=mgba_integer ;;
         *) VCORE= ;;
     esac

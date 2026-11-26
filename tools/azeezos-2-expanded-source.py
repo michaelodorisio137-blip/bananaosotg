@@ -111,5 +111,40 @@ elif kind=="psx":
       pl_rearmed_cbs.show_overscan = 1;
    }
    var.key = "pcsx_rearmed_scale_hires";""")
+elif kind=="genesis":
+    # The Wide renderer already extends the playfield in eight-pixel units.
+    # Request 8 extra columns only for H32, preserving the native H40 image.
+    # Expose vertical overscan as the actual VDP backdrop, not invented lines.
+    p=root/"core/system.c"
+    v=p.read_text()
+    old="    bitmap.viewport.w += config.h40_extra_columns * 8;"
+    new="""    if (getenv("AZEEZ_EXPANDED_VIEWPORT")) {
+      config.h40_extra_columns = (reg[12] & 1) ? 0 : 8;
+      if (bitmap.viewport.h <= 240)
+        bitmap.viewport.y = (240 - bitmap.viewport.h) / 2;
+    }
+    bitmap.viewport.w += config.h40_extra_columns * 8;"""
+    if new not in v:
+        if v.count(old)!=2: raise SystemExit("GX width anchor mismatch")
+        v=v.replace(old,new)
+        if "#include <stdlib.h>" not in v: v="#include <stdlib.h>\n"+v
+        p.write_text(v)
+    # Do not change the game register or sprite budget. Mid-frame switching
+    # remains a special case to validate on real hardware.
+elif kind=="snes":
+    p="bsnes/target-libretro/libretro.cpp"
+    rep(p,'\temulator->configure("Hacks/PPU/Mode7/Scale", scale);',
+        '''\tif (getenv("AZEEZ_EXPANDED_VIEWPORT")) scale = 1;
+\temulator->configure("Hacks/PPU/Mode7/Scale", scale);''')
+    rep(p,'\tif (scale == 0) ws = 0;',
+        '''\tif (getenv("AZEEZ_EXPANDED_VIEWPORT")) ws = 403;
+\tif (scale == 0) ws = 0;''')
+    rep(p,'\t// wsbg1: auto horz and vert',
+        '''\tif (getenv("AZEEZ_EXPANDED_VIEWPORT")) {
+\t\temulator->configure("Hacks/PPU/Mode7/WsMode", 2);
+\t\tws = 403;
+\t}
+
+\t// wsbg1: auto horz and vert''')
 else:
     raise SystemExit("unknown viewport core")
