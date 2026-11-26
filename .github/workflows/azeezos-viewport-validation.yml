@@ -50,13 +50,19 @@ jobs:
           sudo apt-get install -y libdrm-dev libasound2-dev zlib1g-dev pkg-config
           cmake -S BananaDS/bananads -B /tmp/az-ds-build -DBANANADS_MELONDS_DIR="$PWD/BananaDS/melonds" -DBANANADS_MELONDS_PATCHES=OFF -DBANANADS_SDL=OFF -DBANANADS_KMS=ON -DBANANADS_LAN=OFF -DBANANADS_GENGIS=OFF -DBANANADS_LTO=OFF -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
           python3 - <<'PY'
-          import json, subprocess
+          import json, subprocess, pathlib, shlex
           db=json.load(open('/tmp/az-ds-build/compile_commands.json'))
-          for name in ('/bananads/src/emu.cpp','/bananads/src/frontend_kms.cpp'):
-              matches=[x for x in db if x['file'].endswith(name)]
-              assert len(matches)==1,name
-              entry=matches[0]
-              subprocess.run(entry['command'],cwd=entry['directory'],shell=True,check=True)
+          for name in ('emu.cpp','frontend_kms.cpp'):
+              matches=[x for x in db if pathlib.Path(x['file']).name==name]
+              assert matches, (name, [x['file'] for x in db if 'bananads' in x['file'].lower()][:30])
+              # CMake builds emu.cpp for the emulator and host tools. Select the emulator target.
+              entry=next((x for x in matches if 'CMakeFiles/bananads.dir/' in x['command']),matches[0])
+              args=shlex.split(entry['command'])
+              if '-o' in args:
+                  i=args.index('-o')
+                  pathlib.Path(entry['directory'],args[i+1]).parent.mkdir(parents=True,exist_ok=True)
+              print('Compiling',entry['file'],flush=True)
+              subprocess.run(args,cwd=entry['directory'],check=True)
           print('PASS: actual DS frontend translation units compiled')
           PY
       - name: Verify integer touchscreen transform
