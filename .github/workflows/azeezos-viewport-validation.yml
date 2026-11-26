@@ -48,7 +48,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y libdrm-dev libasound2-dev zlib1g-dev pkg-config
-          cmake -S BananaDS/bananads -B /tmp/az-ds-build -DBANANADS_MELONDS_DIR="$PWD/BananaDS/melonds" -DBANANADS_MELONDS_PATCHES=OFF -DBANANADS_SDL=OFF -DBANANADS_KMS=ON -DBANANADS_LAN=OFF -DBANANADS_GENGIS=OFF -DBANANADS_LTO=OFF -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+          cmake -S BananaDS/bananads -B /tmp/az-ds-build -DBANANADS_MELONDS_DIR="$PWD/BananaDS/melonds" -DBANANADS_MELONDS_PATCHES=OFF -DBANANADS_SDL=OFF -DBANANADS_KMS=ON -DBANANADS_LAN=OFF -DBANANADS_GENGIS=ON -DBANANADS_LTO=OFF -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
           python3 - <<'PY'
           import json, subprocess, pathlib, shlex
           db=json.load(open('/tmp/az-ds-build/compile_commands.json'))
