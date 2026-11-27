@@ -13,6 +13,9 @@ script=Path(__file__).with_name("next-n64-source.py")
 dest=root/pkg/"next-n64-source.py"
 dest.write_text(script.read_text())
 mk=pkg+"libretro-mupen64plus-next.mk"
+# Target EGL/GLES headers and libraries must be staged even in a component-only build.
+rep(mk, "LIBRETRO_MUPEN64PLUS_NEXT_LICENSE_FILES = LICENSE",
+    "LIBRETRO_MUPEN64PLUS_NEXT_LICENSE_FILES = LICENSE\nLIBRETRO_MUPEN64PLUS_NEXT_DEPENDENCIES = libegl libgles")
 rep(mk,"define LIBRETRO_MUPEN64PLUS_NEXT_BUILD_CMDS",
 """define LIBRETRO_MUPEN64PLUS_NEXT_BUILD_CMDS
 	python3 $(BR2_EXTERNAL_BANANA_PATH)/package/libretro-mupen64plus-next/next-n64-source.py $(@D)""")
