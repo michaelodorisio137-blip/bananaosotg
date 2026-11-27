@@ -11,6 +11,10 @@ def rep(path,old,new):
     p.write_text(s.replace(old,new,1))
 
 if mode=="--source":
+    # Libretro owns the GL context; no X11 surface support on DRM/EGL RG DS.
+    rep("libretro/Makefile.common",
+        "COREFLAGS += -DVK_USE_PLATFORM_XLIB_KHR",
+        "# AzeezOS: no Xlib surface extensions on DRM/EGL")
     p="libretro/libretro.cpp"
     rep(p,'info->library_name     = "PPSSPP";','info->library_name     = "PPSSPP Azeez 4:3";')
     rep(p,'   retro_base_dir /= "PPSSPP";','''   retro_base_dir /= "PPSSPP";
