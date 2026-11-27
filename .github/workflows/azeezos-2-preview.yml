@@ -189,6 +189,7 @@ jobs:
           done
           python3 tools/next-integer-rootfs.py rootfs
           python3 tools/azeezos-2-native-integer.py rootfs
+          python3 tools/azeezos-2-max-performance.py rootfs
           test -s rootfs/usr/lib/superdrastic/shaders/ds-integer.frag
           strings rootfs/usr/bin/banana-ui | grep -q 'Native integer mode'
           for f in run-retroarch run-bananafront run-drastic run-bananads; do
