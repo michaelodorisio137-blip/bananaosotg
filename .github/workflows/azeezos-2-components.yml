@@ -1,0 +1,115 @@
+name: AzeezOS targeted component build
+on:
+  workflow_dispatch:
+    inputs:
+      component:
+        description: Component to compile
+        required: true
+        type: choice
+        default: ui
+        options: [ui, gba, snes, n64, nes, ps1, genesis, snes-hd, ds, front, retroarch, virtualboy, pce, ngp, saturn, psp]
+  push:
+    branches: [azeezos-2.0]
+    paths:
+      - '.github/workflows/azeezos-2-components.yml'
+      - 'tools/next-integer-viewport-source.py'
+      - 'tools/azeezos-2-snes-fast.py'
+      - 'tools/azeezos-2-psp.py'
+      - 'tools/azeezos-2-cover-background.py'
+      - 'tools/next-n64-source.py'
+      - 'tools/azeezos-2-bananads-filter.py'
+      - 'tools/azeezos-2-virtualboy.py'
+      - 'tools/azeezos-2-pce.py'
+      - 'tools/azeezos-2-ngp.py'
+      - 'tools/azeezos-2-saturn.py'
+permissions:
+  contents: read
+concurrency:
+  group: azeezos-components-${{ inputs.component || 'auto' }}
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      BR2_DL_DIR: ${{ github.workspace }}/dl
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: JorreFog/BananaLinux
+          ref: 54123092f4cb8195d01b82ad12c880d35de059d0
+          path: BananaLinux
+          persist-credentials: false
+      - name: Install cross-build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y build-essential bc bison flex libssl-dev libelf-dev unzip rsync cpio file wget python3-dev swig libgnutls28-dev squashfs-tools cmake libdrm-dev libasound2-dev libfreetype-dev zlib1g-dev
+      - name: Select changed components
+        id: select
+        env:
+          COMPONENT: ${{ inputs.component }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          set -eu
+          if [ -n "$COMPONENT" ]; then
+            selected="$COMPONENT"
+          else
+            selected=$(git diff --name-only "$BEFORE" HEAD | while IFS= read -r f; do
+              case "$f" in
+                tools/next-integer-viewport-source.py) echo gba ;;
+                tools/azeezos-2-snes-fast.py) echo snes ;;
+                tools/azeezos-2-psp.py) echo psp ;;
+                tools/azeezos-2-cover-background.py) echo ui ;;
+                tools/next-n64-source.py) echo n64 ;;
+                tools/azeezos-2-bananads-filter.py) echo ds ;;
+                tools/azeezos-2-virtualboy.py) echo virtualboy ;;
+                tools/azeezos-2-pce.py) echo pce ;;
+                tools/azeezos-2-ngp.py) echo ngp ;;
+                tools/azeezos-2-saturn.py) echo saturn ;;
+              esac
+            done | sort -u | xargs)
+            [ -n "$selected" ] || selected=ui
+          fi
+          echo "packages=$selected" >> "$GITHUB_OUTPUT"
+      - name: Integrate and validate AzeezOS sources
+        run: bash tools/azeezos-2-integrate-build.sh
+      - name: Restore Buildroot source cache
+        uses: actions/cache/restore@v4
+        with:
+          path: dl
+          key: rgds-dl-v2-${{ github.sha }}
+          restore-keys: |
+            rgds-dl-v2-
+            otg-dl-
+      - name: Restore Buildroot compiler cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.buildroot-ccache
+          key: rgds-ccache-v2-${{ github.sha }}
+          restore-keys: rgds-ccache-v2-
+      - name: Cross-compile only selected packages
+        env:
+          COMPONENTS: ${{ steps.select.outputs.packages }}
+        run: bash tools/azeezos-2-build-components.sh $COMPONENTS
+      - name: Save compiler cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.buildroot-ccache
+          key: rgds-ccache-v2-${{ github.sha }}
+      - name: Save source cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: dl
+          key: rgds-dl-v2-${{ github.sha }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AzeezOS-Component-Binaries-${{ github.run_id }}
+          path: component-output/
+          retention-days: 14
+          if-no-files-found: error

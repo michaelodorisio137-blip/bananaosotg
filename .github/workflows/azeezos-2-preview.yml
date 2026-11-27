@@ -7,17 +7,6 @@ on:
         type: boolean
         required: false
         default: false
-  push:
-    branches: [azeezos-2.0]
-    paths:
-      - 'tools/azeezos-2-*'
-      - 'tools/next-integer-*.py'
-      - 'tools/next-n64-*.py'
-      - 'tools/ai-cheats/**'
-      - 'tools/cheat-database/**'
-      - 'tools/mods/**'
-      - 'tools/ai-dev/**'
-      - '.github/workflows/azeezos-2-preview.yml'
 permissions:
   contents: read
   actions: read
@@ -48,50 +37,8 @@ jobs:
           path: BananaLinux
           fetch-depth: 1
           persist-credentials: false
-      - name: Integrate full AzeezOS and N64 nearest core
-        run: |
-          set -eu
-          python3 -m py_compile apply.py tools/next-n64-integration.py tools/next-n64-source.py
-          python3 apply.py BananaLinux
-          python3 verify-preservation.py BananaLinux
-          python3 tools/next-n64-integration.py BananaLinux
-          python3 tools/next-integer-viewport-integration.py BananaLinux
-          python3 tools/azeezos-2-expanded-integration.py BananaLinux
-          python3 -m py_compile tools/next-integer-viewport-source.py tools/next-integer-rootfs.py
-          python3 tools/azeezos-2-region.py BananaLinux
-          python3 -m py_compile tools/azeezos-2-native-integer.py
-          python3 tools/azeezos-2-native-integer.py --ui BananaLinux
-          python3 -m py_compile tools/azeezos-2-bananads-filter.py
-          python3 tools/azeezos-2-bananads-filter.py --integrate BananaLinux
-          python3 tools/azeezos-2-panel.py BananaLinux
-          python3 tools/ai-cheats/integrate.py BananaLinux
-          python3 tools/ai-cheats/integrate_trial.py BananaLinux
-          python3 tools/mods/integrate.py BananaLinux
-          python3 tools/ai-dev/integrate.py BananaLinux
-          python3 -m py_compile tools/ai-dev/{generate,sign,stage}.py
-          python3 tools/ai-cheats/integrate_nds.py BananaLinux
-          python3 tools/ai-cheats/integrate_maps.py BananaLinux
-          python3 tools/cheat-database/integrate.py BananaLinux
-          g++ -std=c++17 -Wall -Wextra -Werror tools/mods/patch_test.cpp -lz -o /tmp/mod-patch-test
-          /tmp/mod-patch-test
-          g++ -std=c++17 -Wall -Wextra -Werror tools/mods/install_test.cpp -lz -o /tmp/mod-install-test
-          /tmp/mod-install-test
-          python3 tools/ai-cheats/launcher_identity.py BananaLinux/system/rootfs
-          g++ -std=c++17 -Wall -Wextra -Werror tools/ai-cheats/catalog_test.cpp -o /tmp/catalog-test
-          /tmp/catalog-test
-          g++ -std=c++17 -Wall -Wextra -Werror tools/ai-cheats/live_scan_test.cpp -o /tmp/live-scan-test
-          /tmp/live-scan-test
-          g++ -std=c++17 -Wall -Wextra -Werror tools/ai-cheats/trial_test.cpp -o /tmp/cheat-trial-test
-          /tmp/cheat-trial-test
-          for f in settings_gamepanel.cpp main.cpp library.cpp settings.cpp settings_defaults.cpp nds/overlay.cpp complink.cpp; do
-            g++ -std=c++17 -fsyntax-only -IBananaLinux/ui/src -IBananaLinux/ui -IBananaLinux/ui/rnds $(pkg-config --cflags freetype2 libdrm zlib) BananaLinux/ui/src/$f
-          done
-          grep -q 'Nearest neighbor (NEW)' BananaLinux/ui/src/settings.cpp
-          grep -q '"nearest"' BananaLinux/ui/src/settings_defaults.cpp
-          grep -q 'nearest) t=nearest' BananaLinux/system/rootfs/usr/libexec/banana/run-retroarch
-          grep -q 'next-n64-source.py' BananaLinux/buildroot/package/libretro-mupen64plus-next/libretro-mupen64plus-next.mk
-          sh -n BananaLinux/system/rootfs/usr/libexec/banana/run-retroarch
-          git -C BananaLinux diff --check
+      - name: Integrate and validate AzeezOS sources
+        run: bash tools/azeezos-2-integrate-build.sh
       - uses: actions/download-artifact@v4
         if: inputs.proposed_feature
         with:
@@ -106,16 +53,24 @@ jobs:
           for f in settings_gamepanel.cpp main.cpp settings.cpp; do
             g++ -std=c++17 -fsyntax-only -IBananaLinux/ui/src -IBananaLinux/ui -IBananaLinux/ui/rnds $(pkg-config --cflags freetype2 libdrm zlib) BananaLinux/ui/src/$f
           done
-      - name: Restore Buildroot cache
+      - name: Restore Buildroot source cache
         uses: actions/cache/restore@v4
         with:
           path: dl
-          key: otg-dl-${{ hashFiles('apply.py', 'usb-sd2') }}
-          restore-keys: otg-dl-
-      - name: Compile AArch64 GLideN64 and Settings menu
+          key: rgds-dl-v2-${{ github.sha }}
+          restore-keys: |
+            rgds-dl-v2-
+            otg-dl-
+      - name: Restore Buildroot compiler cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.buildroot-ccache
+          key: rgds-ccache-v2-${{ github.sha }}
+          restore-keys: rgds-ccache-v2-
+      - name: Compile userspace packages (reuse existing kernel and bootloader)
         run: |
           set -eu
-          make -C BananaLinux rgds
+          bash tools/azeezos-2-build-components.sh all
           CORE=BananaLinux/output/rgds/target/usr/lib/libretro/mupen64plus_next_libretro.so
           UI=BananaLinux/output/rgds/target/usr/bin/banana-ui
           test -s "$CORE"; test -s "$UI"
@@ -125,6 +80,18 @@ jobs:
           file "$CORE" "$UI"
           strings "$CORE" | grep -q nearest
           strings "$UI" | grep -q 'Nearest neighbor (NEW)'
+      - name: Save compiler cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.buildroot-ccache
+          key: rgds-ccache-v2-${{ github.sha }}
+      - name: Save source cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: dl
+          key: rgds-dl-v2-${{ github.sha }}
       - uses: actions/checkout@v4
         with:
           repository: libretro/libretro-database
@@ -189,6 +156,10 @@ jobs:
           done
           mkdir -p rootfs/usr/share/banana/PPSSPP
           cp -a BananaLinux/output/rgds/target/usr/share/banana/PPSSPP/. rootfs/usr/share/banana/PPSSPP/
+          python3 tools/azeezos-2-virtualboy.py --rootfs rootfs
+          python3 tools/azeezos-2-pce.py --rootfs rootfs
+          python3 tools/azeezos-2-ngp.py --rootfs rootfs
+          python3 tools/azeezos-2-saturn.py --rootfs rootfs
           python3 tools/azeezos-2-psp.py --rootfs rootfs
           python3 tools/next-integer-rootfs.py rootfs
           python3 tools/azeezos-2-native-integer.py rootfs
