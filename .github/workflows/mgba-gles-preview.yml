@@ -1,0 +1,79 @@
+name: Experimental mGBA GLES3 RG DS core
+on:
+  workflow_dispatch:
+  push:
+    branches: [azeezos-2.0]
+    paths:
+      - 'tools/mgba-gles-preview.py'
+      - '.github/workflows/mgba-gles-preview.yml'
+permissions:
+  contents: read
+concurrency:
+  group: mgba-gles-preview
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: JorreFog/BananaLinux
+          ref: 54123092f4cb8195d01b82ad12c880d35de059d0
+          path: BananaLinux
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: libretro/mgba
+          ref: 7a12d6d4b9acb14c0ae62c9166b6a2f3d08007f6
+          path: mgba-host
+          persist-credentials: false
+      - name: Compile native GLES bridge before cross-build
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y build-essential bc bison flex libssl-dev libelf-dev unzip rsync cpio file wget python3-dev swig libgnutls28-dev cmake libgles-dev libegl-dev
+          python3 -m py_compile tools/mgba-gles-preview.py
+          python3 tools/mgba-gles-preview.py mgba-host
+          cmake -S mgba-host -B mgba-host/build -DLIBMGBA_ONLY=ON -DBUILD_LIBRETRO=ON -DCMAKE_BUILD_TYPE=Release
+          cmake --build mgba-host/build --target mgba_libretro --parallel 4
+          test -s mgba-host/build/mgba_libretro.so
+          readelf -Ws mgba-host/build/mgba_libretro.so > /tmp/symbols
+          grep -q glBlitFramebuffer /tmp/symbols
+      - name: Cross-build the same bridge using the RG DS toolchain
+        run: |
+          set -eu
+          pkg=BananaLinux/buildroot/package/libretro-mgba
+          cp tools/mgba-gles-preview.py "$pkg/"
+          cat >> /tmp/mgba-gpu-hook <<'EOF'
+          LIBRETRO_MGBA_DEPENDENCIES += libegl libgles
+          define LIBRETRO_MGBA_GLES_PREVIEW
+          	python3 $(BR2_EXTERNAL_BANANA_PATH)/package/libretro-mgba/mgba-gles-preview.py $(@D)
+          endef
+          LIBRETRO_MGBA_POST_PATCH_HOOKS += LIBRETRO_MGBA_GLES_PREVIEW
+          EOF
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path("BananaLinux/buildroot/package/libretro-mgba/libretro-mgba.mk")
+          s=p.read_text()
+          a="$(eval $(cmake-package))"
+          assert s.count(a)==1
+          p.write_text(s.replace(a,Path("/tmp/mgba-gpu-hook").read_text()+"\n"+a))
+          PY
+          make -C BananaLinux libretro-mgba-rgds
+          mkdir -p out
+          cp BananaLinux/output/rgds/target/usr/lib/libretro/mgba_libretro.so out/mgba_gles_preview_libretro.so
+          readelf -h out/mgba_gles_preview_libretro.so | grep -q AArch64
+          readelf -Ws out/mgba_gles_preview_libretro.so > /tmp/arm-symbols
+          grep -q glBlitFramebuffer /tmp/arm-symbols
+          readelf -d out/mgba_gles_preview_libretro.so | grep -q libGLES
+          git rev-parse HEAD > out/SOURCE-COMMIT
+          (cd out; sha256sum *.so > SHA256SUMS)
+          echo 'Experimental hardware renderer only. No expanded exterior yet. Hardware testing required.' > out/README.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mgba-gles-preview-rgds
+          path: out/
+          if-no-files-found: error
