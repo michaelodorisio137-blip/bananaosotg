@@ -27,13 +27,14 @@ g++ -std=c++17 -Wall -Wextra -Werror tools/mods/patch_test.cpp -lz -o /tmp/mod-p
 g++ -std=c++17 -Wall -Wextra -Werror tools/mods/install_test.cpp -lz -o /tmp/mod-install-test
 /tmp/mod-install-test
 python3 tools/ai-cheats/launcher_identity.py BananaLinux/system/rootfs
+python3 tools/azeezos-2-idle-reflection.py BananaLinux
 g++ -std=c++17 -Wall -Wextra -Werror tools/ai-cheats/catalog_test.cpp -o /tmp/catalog-test
 /tmp/catalog-test
 g++ -std=c++17 -Wall -Wextra -Werror tools/ai-cheats/live_scan_test.cpp -o /tmp/live-scan-test
 /tmp/live-scan-test
 g++ -std=c++17 -Wall -Wextra -Werror tools/ai-cheats/trial_test.cpp -o /tmp/cheat-trial-test
 /tmp/cheat-trial-test
-for f in settings_gamepanel.cpp main.cpp library.cpp settings.cpp settings_defaults.cpp nds/overlay.cpp complink.cpp; do
+for f in kms.cpp settings_gamepanel.cpp main.cpp library.cpp settings.cpp settings_defaults.cpp nds/overlay.cpp complink.cpp; do
   g++ -std=c++17 -fsyntax-only -IBananaLinux/ui/src -IBananaLinux/ui -IBananaLinux/ui/rnds $(pkg-config --cflags freetype2 libdrm zlib) BananaLinux/ui/src/$f
 done
 grep -q 'Nearest neighbor (NEW)' BananaLinux/ui/src/settings.cpp
