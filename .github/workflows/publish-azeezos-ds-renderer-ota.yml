@@ -17,14 +17,12 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: michaelodorisio137-blip/bananaosotg
-      BASE_RUN: '45952890809'
-      BASE_VERSION: 2.0.0-dev.45952890809
-      BASE_SHA: 2619bbc04a66c0f23364959c2b4832c10f5877a1
-      OLD_PATCH: 8f81c453d552012304bb64481fd51902e0651fb8
-      UI_RUN: '46021426809'
-      UI_SHA: ecf193d0308550c8cfb156a35edc9596ab6449b2
-      DS_RUN: '46021565751'
-      DS_SHA: 1650bc5e554b035cc94e8b91da50ffaa064d4840
+      BASE_RUN: '46055572166'
+      BASE_VERSION: 2.0.0-dev.46055572166
+      BASE_SHA: 73ed1c154ce0c3802975877a9f3688236f291ed2
+      BUILD_RUN: '46061772616'
+      BUILD_SHA: 2ffcf8104f159ca89b18507792e21f28bf713a90
+      VALIDATION_SHA: 77a4fce2041e1f0495763d607a9cd9f0d8d50265
     steps:
       - uses: actions/checkout@v4
         with:
@@ -34,24 +32,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git diff --exit-code "$DS_SHA" HEAD -- tools
-          git diff --name-only "$UI_SHA" "$DS_SHA" | sort > /tmp/actual-diff
-          printf '%s\n' tools/azeezos-2-bananads-filter.py tools/azeezos-2-ds-expanded.py | sort > /tmp/expected-diff
+          git diff --exit-code "$BUILD_SHA" HEAD -- tools
+          git diff --exit-code "$VALIDATION_SHA" "$BUILD_SHA" -- tools/azeezos-2-ds-expanded.py tools/azeezos-2-bananads-filter.py
+          git diff --name-only "$BASE_SHA" "$BUILD_SHA" -- tools | sort > /tmp/actual-diff
+          printf '%s\n' tools/azeezos-2-ds-expanded.py tools/azeezos-2-native-integer.py | sort > /tmp/expected-diff
           diff -u /tmp/expected-diff /tmp/actual-diff
-          for spec in "$BASE_RUN:$BASE_SHA" "$UI_RUN:$UI_SHA" "$DS_RUN:$DS_SHA" "46021565768:$DS_SHA" "46021565769:$DS_SHA"; do
+          for spec in "$BASE_RUN:$BASE_SHA" "$BUILD_RUN:$BUILD_SHA" "46061772637:$BUILD_SHA" "46061758622:$VALIDATION_SHA"; do
             gh api "repos/$GH_REPO/actions/runs/${spec%:*}" --jq '.conclusion + " " + .head_sha' | grep -Fx "success ${spec#*:}"
           done
-          mkdir -p base ui ds original out
-          gh run download "$BASE_RUN" -n AzeezOS-2.0-Dev-Preview -D base
-          gh run download "$UI_RUN" -n "AzeezOS-Component-Binaries-$UI_RUN" -D ui
-          gh run download "$DS_RUN" -n "AzeezOS-Component-Binaries-$DS_RUN" -D ds
-          test "$(cat ui/SOURCE-COMMIT)" = "$UI_SHA"
-          test "$(cat ds/SOURCE-COMMIT)" = "$DS_SHA"
-          for dir in base ui ds; do
-            if [ "$dir" = base ]; then sums=SHA256SUMS-rgds.txt; else sums=SHA256SUMS; fi
-            (cd "$dir"; sha256sum -c "$sums")
-          done
-          for bin in ui/usr/bin/banana-ui ds/usr/bin/bananads; do
+          mkdir -p base components original out
+          gh run download "$BASE_RUN" -n AzeezOS-DS-Renderer-OTA -D base
+          gh run download "$BUILD_RUN" -n "AzeezOS-Component-Binaries-$BUILD_RUN" -D components
+          test "$(cat components/SOURCE-COMMIT)" = "$BUILD_SHA"
+          (cd base; sha256sum -c SHA256SUMS-rgds.txt)
+          (cd components; sha256sum -c SHA256SUMS)
+          for bin in components/usr/bin/banana-ui components/usr/bin/bananads; do
             test -s "$bin"
             readelf -h "$bin" | grep -q AArch64
           done
@@ -72,44 +67,19 @@ jobs:
           dir=$(cat /tmp/ota-dir)
           unsquashfs -d rootfs "$dir/rootfs.squashfs"
           test "$(cat rootfs/etc/banana/version)" = "$BASE_VERSION"
-          install -m 0755 ds/usr/bin/bananads rootfs/usr/bin/bananads
-          install -m 0755 ui/usr/bin/banana-ui rootfs/usr/bin/banana-ui
-          git show "$OLD_PATCH:tools/azeezos-2-native-integer.py" > /tmp/old-integer.py
-          python3 - <<'PY'
-          import ast
-          from pathlib import Path
-          def block(path):
-              tree=ast.parse(Path(path).read_text())
-              for n in ast.walk(tree):
-                  if isinstance(n,ast.Call) and isinstance(n.func,ast.Name) and n.func.id=='replace' and len(n.args)==3 and isinstance(n.args[0],ast.Name) and n.args[0].id=='bd':
-                      a=n.args[2]
-                      if isinstance(a,ast.BinOp) and isinstance(a.op,ast.Add) and isinstance(a.left,ast.Name) and a.left.id=='readmode':
-                          return ast.literal_eval(a.right)
-              raise RuntimeError("DS launcher patch not found")
-          old=block('/tmp/old-integer.py')
-          new=block('tools/azeezos-2-native-integer.py')
-          p=Path('rootfs/usr/libexec/banana/run-bananads')
-          s=p.read_text()
-          assert s.count(old)==1, 'baseline DS launcher does not match expected source'
-          s=s.replace(old,new,1)
-          assert 'BANANADS_RENDER_TEXFILTER=0' not in s
-          assert 'BANANADS_RENDER_SCALE="${BANANADS_RENDER_SCALE:-1}"' not in s
-          assert 'azeez_ds_integer' in s
-          p.write_text(s)
-          p=Path('rootfs/etc/banana/settings.conf')
-          s=p.read_text()
-          s=''.join(l for l in s.splitlines(keepends=True) if not l.lstrip().startswith('azeez_ds_fast ='))
-          if 'azeez_ds_integer =' not in s:
-              s+='\nazeez_ds_integer = on\n'
-          p.write_text(s)
-          PY
+          install -m 0755 components/usr/bin/bananads rootfs/usr/bin/bananads
+          install -m 0755 components/usr/bin/banana-ui rootfs/usr/bin/banana-ui
           sh -n rootfs/usr/libexec/banana/run-bananads
-          cmp ds/usr/bin/bananads rootfs/usr/bin/bananads
-          cmp ui/usr/bin/banana-ui rootfs/usr/bin/banana-ui
+          cmp components/usr/bin/bananads rootfs/usr/bin/bananads
+          cmp components/usr/bin/banana-ui rootfs/usr/bin/banana-ui
           strings rootfs/usr/bin/bananads > /tmp/ds-strings
           strings rootfs/usr/bin/banana-ui > /tmp/ui-strings
           grep -Fq 'DS 3D requested scale=' /tmp/ds-strings
-          grep -Fq 'DS integer presentation' /tmp/ui-strings
+          grep -Fq 'expanded 3D raster:' /tmp/ds-strings
+          grep -Fq 'render.expanded_scale' /tmp/ds-strings
+          grep -Fq 'Expanded 3D resolution' /tmp/ui-strings
+          grep -Fq '320x240 (Native)' /tmp/ui-strings
+          grep -Fq '640x480 (HD)' /tmp/ui-strings
           VERSION="2.0.0-dev.$GITHUB_RUN_ID"
           printf '%s\n' "$VERSION" > rootfs/etc/banana/version
           printf '%s\n' "$VERSION" > "$dir/VERSION"
@@ -133,7 +103,7 @@ jobs:
           FILE="banana-rgds-$VERSION.update.tar"
           TAG="v$VERSION"
           if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" "out/$FILE" out/SHA256SUMS-rgds.txt --target "$GITHUB_SHA" --title "AzeezOS RG DS 2.0 DS renderer preview" --notes "DS renderer and UI compiled successfully. Restores requested 1x–4x rendering and filtering, removes legacy fast overrides, retains previous firmware and other emulators. Physical hardware validation pending." --prerelease --draft
+            gh release create "$TAG" "out/$FILE" out/SHA256SUMS-rgds.txt --target "$GITHUB_SHA" --title "AzeezOS RG DS 2.0 DS renderer preview" --notes "Adds selectable native 320x240 and HD 640x480 expanded DS 3D rasters, with 2x integer 2D presentation and selectable texture filtering. Native mode defaults to 320x240. Renderer and UI cross-compiled successfully; hardware performance and visual correctness remain unverified. Prior OTA and unrelated emulators preserved." --prerelease --draft
           fi
           mkdir -p verify
           gh release download "$TAG" --pattern "$FILE" --pattern SHA256SUMS-rgds.txt --dir verify
