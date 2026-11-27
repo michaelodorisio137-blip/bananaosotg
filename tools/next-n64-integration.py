@@ -27,4 +27,40 @@ rep("ui/src/settings.cpp",
 rep("system/rootfs/usr/libexec/banana/run-retroarch",
     'case $(setting rgds_n64_texfilter) in standard) t=standard ;; *) t=3point ;; esac',
     'case $(setting rgds_n64_texfilter) in standard) t=standard ;; nearest) t=nearest ;; *) t=3point ;; esac')
-print("GLideN64 source hook, NEW nearest texture option, and launcher installed.")
+rep("ui/src/settings.cpp",
+    'add(PS, "picture", "Nintendo 64 textures",',
+    '''add(PS, "picture", "Nintendo 64 resolution",
+                "Choose native game buffers or a higher-resolution 3D render. Restart the game to apply.",
+                menu, "azeez_n64_resolution", { "240p fast (2x display)", "Native 480p", "Original core settings" }, { "240p", "480p", "original" });
+            items.back().hints = { "Native game framebuffers, 640x480 presentation.", "640x480 render target; may be slower.", "Restore existing core resolution options." };
+            add(PS, "picture", "Nintendo 64 borders",
+                "Fill VI margins with nearest sampling, or preserve the original scanout.",
+                menu, "azeez_n64_borders", { "Fill VI margins", "Original scanout" }, { "fill", "original" });
+            items.back().hints = { "Can use noninteger scaling; game-drawn bars remain.", "Preserves original framing." };
+            add(PS, "picture", "Nintendo 64 textures",''')
+rep("ui/src/settings_defaults.cpp",
+    'const char* const N64_TEXTURE_FILTER[] =',
+    '''const char* const AZ_N64_RESOLUTION[] = { "240p", "480p", "original", nullptr };
+        const char* const AZ_N64_BORDERS[] = { "fill", "original", nullptr };
+        const char* const N64_TEXTURE_FILTER[] =''')
+rep("ui/src/settings_defaults.cpp",
+    '{ "rgds_n64_texfilter", "3point", ENUM, N64_TEXTURE_FILTER, 0, 0, true },',
+    '''{ "rgds_n64_texfilter", "3point", ENUM, N64_TEXTURE_FILTER, 0, 0, true },
+            { "azeez_n64_resolution", "240p", ENUM, AZ_N64_RESOLUTION, 0, 0, true },
+            { "azeez_n64_borders", "fill", ENUM, AZ_N64_BORDERS, 0, 0, true },''')
+rep("system/rootfs/usr/libexec/banana/run-retroarch",
+    '# RG DS native N64 core texturing',
+    '''# AzeezOS N64 modes; do not rewrite persistent core options or game overrides.
+if [ "$BANANA_SYSTEM" = n64 ]; then
+    case "$(setting azeez_n64_resolution)" in
+        480p) AZEEZ_N64_MODE=480p ;;
+        original) AZEEZ_N64_MODE=original ;;
+        *) AZEEZ_N64_MODE=240p ;;
+    esac
+    export AZEEZ_N64_MODE
+    if [ "$AZEEZ_N64_MODE" != original ] && [ "$(setting azeez_n64_borders)" != original ]; then
+        export AZEEZ_N64_FILL=1
+    fi
+fi
+# RG DS native N64 core texturing''')
+print("GLideN64 source hook, nearest filter and N64 presentation options installed.")

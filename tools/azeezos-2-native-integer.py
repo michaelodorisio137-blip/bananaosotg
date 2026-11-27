@@ -61,6 +61,7 @@ replace(ra,'if [ "$(setting ra_border)" = on ] && [ -n "$BANANA_SYSTEM" ]; then'
     '''AZ_INT=0
 case "$CORE" in */mgba_integer_libretro.so) AZ_INT=1 ;; esac
 [ "$(setting azeez_native_integer)" = on ] && AZ_INT=1
+case "$AZEEZ_N64_MODE" in 240p|480p) AZ_INT=1 ;; esac
 if [ "$AZ_INT" = 0 ] && [ "$(setting ra_border)" = on ] && [ -n "$BANANA_SYSTEM" ]; then''')
 p=root/ra
 s=p.read_text()

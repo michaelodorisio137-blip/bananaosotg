@@ -97,16 +97,46 @@ void retro_get_system_av_info(struct retro_system_av_info *info)
 
 #ifdef HAVE_HDPACK""")
 elif kind=="n64":
+    # Preserve upstream's fast 640x480 presentation with native game buffers.
     rep("libretro/libretro.c","       // If we use Angrylion, we force 640x480",
-        """       if (getenv("AZEEZ_EXPANDED_VIEWPORT")) {
-          retro_screen_width = 320;
-          retro_screen_height = 240;
+        """       const char *az_n64_mode = getenv("AZEEZ_N64_MODE");
+       if (current_rdp_type == RDP_PLUGIN_GLIDEN64 && az_n64_mode &&
+           (!strcmp(az_n64_mode,"240p") || !strcmp(az_n64_mode,"480p"))) {
+          retro_screen_width = 640;
+          retro_screen_height = 480;
           retro_screen_aspect = 4.0 / 3.0;
           AspectRatio = 1;
-          /* Keep the existing GLideN64 native-resolution factor.
-           * Fixed 320x240 output does not require overriding this option. */
+          EnableNativeResFactor = !strcmp(az_n64_mode,"240p") ? 1 : 0;
        }
        // If we use Angrylion, we force 640x480""")
+    rep("libretro/libretro.c",'       var.key = CORE_NAME "-ForceDisableExtraMem";',
+        """       if (current_rdp_type == RDP_PLUGIN_GLIDEN64 && az_n64_mode &&
+           strcmp(az_n64_mode,"original") && getenv("AZEEZ_N64_FILL"))
+          EnableOverscan = 0;
+       var.key = CORE_NAME "-ForceDisableExtraMem";""")
+    p="GLideN64/src/FrameBuffer.cpp"
+    rep(p,"#include <assert.h>","#include <assert.h>\n#include <cstdlib>")
+    rep(p,"\tObjectHandle readBuffer;\n\n\tif (pFilteredBuffer->m_pTexture->frameBufferTexture == CachedTexture::fbMultiSample) {",
+        """	/* Fill VI margins only on single-buffer scanouts, without reading
+	 * beyond the existing source rectangle or modifying VI registers. */
+	const bool azFill = std::getenv("AZEEZ_N64_FILL") &&
+		!config.frameBufferEmulation.enableOverscan && pNextBuffer == nullptr &&
+		srcCoord[0] >= 0 && srcCoord[1] >= 0 &&
+		srcCoord[2] > srcCoord[0] && srcCoord[3] > srcCoord[1];
+	if (azFill) {
+		dstCoord[0] = hOffset;
+		dstCoord[1] = vOffset;
+		dstCoord[2] = hOffset + static_cast<s32>(m_overscan.getDrawingWidth());
+		dstCoord[3] = vOffset + static_cast<s32>(wnd.getHeight());
+	}
+	ObjectHandle readBuffer;
+
+	if (pFilteredBuffer->m_pTexture->frameBufferTexture == CachedTexture::fbMultiSample) {""")
+    rep(p,"\tif (config.frameBufferEmulation.copyDepthToMainDepthBuffer != 0) {\n\t\tblitParams.tex[1] = pBuffer->m_pDepthTexture;",
+        """	if (azFill)
+		blitParams.filter = textureParameters::FILTER_NEAREST;
+	if (config.frameBufferEmulation.copyDepthToMainDepthBuffer != 0) {
+		blitParams.tex[1] = pBuffer->m_pDepthTexture;""")
 elif kind=="psx":
     rep("frontend/libretro.c",'   var.key = "pcsx_rearmed_scale_hires";',
         """   /* Keep native high resolution modes. Overscan reveals available
