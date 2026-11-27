@@ -20,8 +20,14 @@ jobs:
     uses: ./.github/workflows/azeezos-2-nes-seam.yml
     permissions:
       contents: read
+  ui:
+    uses: ./.github/workflows/azeezos-2-components.yml
+    with:
+      component: ui
+    permissions:
+      contents: read
   publish:
-    needs: [gba, nes]
+    needs: [gba, nes, ui]
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
@@ -75,6 +81,10 @@ jobs:
         with:
           name: NES-exterior-seam-RGDS
           path: nes-component
+      - uses: actions/download-artifact@v4
+        with:
+          name: AzeezOS-Component-Binaries-${{ github.run_id }}
+          path: ui-component
       - name: Verify new component provenance and checksums
         run: |
           set -euo pipefail
@@ -82,6 +92,9 @@ jobs:
           test "$(cat nes-component/SOURCE-COMMIT)" = "$GITHUB_SHA"
           (cd gba-component; sha256sum -c SHA256SUMS)
           (cd nes-component; sha256sum -c SHA256SUMS)
+          test "$(cat ui-component/SOURCE-COMMIT)" = "$GITHUB_SHA"
+          (cd ui-component; sha256sum -c SHA256SUMS)
+          readelf -h ui-component/usr/bin/banana-ui | grep -q AArch64
           readelf -h gba-component/mgba_gles_preview_libretro.so | grep -q AArch64
           readelf -h nes-component/usr/lib/libretro/fceumm_libretro.so | grep -q AArch64
       - name: Preserve baseline and install combined component binaries
@@ -94,7 +107,7 @@ jobs:
           unsquashfs -d rootfs "$dir/rootfs.squashfs"
           test "$(cat rootfs/etc/banana/version)" = "$BASE_VERSION"
           install -m 0755 components/usr/bin/bananads rootfs/usr/bin/bananads
-          install -m 0755 components/usr/bin/banana-ui rootfs/usr/bin/banana-ui
+          install -m 0755 ui-component/usr/bin/banana-ui rootfs/usr/bin/banana-ui
           install -m 0644 gba-component/mgba_gles_preview_libretro.so rootfs/usr/lib/libretro/mgba_gles_preview_libretro.so
           install -m 0644 nes-component/usr/lib/libretro/fceumm_libretro.so rootfs/usr/lib/libretro/fceumm_libretro.so
           python3 tools/gpu-launch-session.py rootfs
@@ -122,12 +135,13 @@ jobs:
           test -s rootfs/usr/share/banana/PPSSPP/compat.ini
           sh -n rootfs/usr/libexec/banana/run-bananads
           cmp components/usr/bin/bananads rootfs/usr/bin/bananads
-          cmp components/usr/bin/banana-ui rootfs/usr/bin/banana-ui
+          cmp ui-component/usr/bin/banana-ui rootfs/usr/bin/banana-ui
           strings rootfs/usr/bin/bananads > /tmp/ds-strings
           strings rootfs/usr/bin/banana-ui > /tmp/ui-strings
           grep -Fq 'DS 3D requested scale=' /tmp/ds-strings
           grep -Fq 'expanded 3D raster:' /tmp/ds-strings
           grep -Fq 'render.expanded_scale' /tmp/ds-strings
+          grep -Fq 'azeez_idle_reflection' /tmp/ui-strings
           grep -Fq 'Expanded 3D resolution' /tmp/ui-strings
           grep -Fq '320x240 (Native)' /tmp/ui-strings
           grep -Fq '640x480 (HD)' /tmp/ui-strings
@@ -154,7 +168,7 @@ jobs:
           FILE="banana-rgds-$VERSION.update.tar"
           TAG="v$VERSION"
           if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" "out/$FILE" out/SHA256SUMS-rgds.txt --target "$GITHUB_SHA" --title "AzeezOS RG DS 2.0 combined GPU development preview" --notes "Preserves existing DS renderer and software mGBA cores; includes NES scanline seam repair, optional GLES3 expanded GBA core with candidate CRIS routine capture, and Saturn/PSP GPU launch isolation. No live 3D polygon replacement yet. Hardware functionality and speed unverified. Prior OTA preserved." --prerelease --draft
+            gh release create "$TAG" "out/$FILE" out/SHA256SUMS-rgds.txt --target "$GITHUB_SHA" --title "AzeezOS RG DS 2.0 combined GPU development preview" --notes "Preserves existing DS renderer and software mGBA cores; includes NES scanline seam repair, optional GLES3 expanded GBA core with candidate CRIS routine capture, Saturn/PSP GPU launch isolation, and low-rate idle bottom-screen reflection on supported linear scanouts. No live 3D polygon replacement yet. Hardware functionality and speed unverified. Prior OTA preserved." --prerelease --draft
           fi
           mkdir -p verify
           gh release download "$TAG" --pattern "$FILE" --pattern SHA256SUMS-rgds.txt --dir verify
