@@ -99,7 +99,7 @@ static unsigned rgdsRead16(const uint8_t* v, unsigned addr) {
     return (unsigned)v[addr] | ((unsigned)v[addr+1] << 8);
 }
 static bool rgdsGBASample(const struct GBAVideoSoftwareRenderer* r,
-                          unsigned i, int sx, int sy, mColor* color) {
+                          unsigned i, int sx, int sy, int line, mColor* color) {
     const struct GBAVideoSoftwareBackground* b = &r->bg[i];
     const uint8_t* v = (const uint8_t*)r->d.vram;
     unsigned mode = GBARegisterDISPCNTGetMode(r->dispcnt);
@@ -129,11 +129,10 @@ static bool rgdsGBASample(const struct GBAVideoSoftwareRenderer* r,
         return true;
     }
     if (i < 2 || (mode == 1 && i != 2) || (mode >= 3 && i != 2)) return false;
-    /* mGBA's affine origins are reset at frame completion. Use the latched
-       reference and matrix for exterior pixels; native scanline effects
-       remain exclusively in the unmodified LCD framebuffer. */
-    int x = (b->refx + sx*b->dx + sy*b->dmx) >> 8;
-    int y = (b->refy + sx*b->dy + sy*b->dmy) >> 8;
+    /* Match the live affine origin on this hardware scanline, including
+       HBlank DMA writes. Only extrapolate vertically outside the LCD. */
+    int x = (b->sx + sx*b->dx + (sy-line)*b->dmx) >> 8;
+    int y = (b->sy + sx*b->dy + (sy-line)*b->dmy) >> 8;
     if (mode <= 2) {
         unsigned size = 128U << b->size;
         if (b->overflow) {x &= size-1; y &= size-1;}
@@ -149,33 +148,46 @@ static bool rgdsGBASample(const struct GBAVideoSoftwareRenderer* r,
     unsigned off = mode != 3 && GBARegisterDISPCNTIsFrameSelect(r->dispcnt) ? 0xA000 : 0;
     unsigned at = off + (y*w+x)*(mode==4?1:2);
     if (at >= 0x14000) return false;
-    if (mode==4) { if (!v[at]) return false; *color=r->normalPalette[v[at]]; }
+    if (mode==4) { *color=r->normalPalette[v[at]]; }
     else *color=mColorFrom555(rgdsRead16(v,at));
     return true;
 }
-static void rgdsGBARender(const mColor* native) {
-    const struct GBA* gba = (const struct GBA*)core->board;
-    const struct GBAVideoSoftwareRenderer* r=(const struct GBAVideoSoftwareRenderer*)gba->video.renderer;
-    for (int y=0;y<240;++y) for(int x=0;x<320;++x) {
-        if (x>=40 && x<280 && y>=40 && y<200) {
-            rgdsGBABorder[y*320+x]=native[(y-40)*VIDEO_WIDTH_MAX+x-40];
-            continue;
+/* Draw exterior pixels while the original scanline's registers and VRAM
+   are live. Hardware timing, native framebuffer and caches stay untouched. */
+static mColor rgdsGBAExteriorPixel(const struct GBAVideoSoftwareRenderer* r,
+                                  int sx,int sy,int line) {
+    if (GBARegisterDISPCNTIsForcedBlank(r->dispcnt)) return M_COLOR_WHITE;
+    mColor pixel = r->normalPalette[0];
+    if (!r->d.vram) return pixel;
+    int priority=4;
+    for(unsigned i=0;i<4;++i) {
+        mColor c;
+        if (r->bg[i].priority < (unsigned)priority &&
+            rgdsGBASample(r,i,sx,sy,line,&c)) {
+            pixel=c;priority=r->bg[i].priority;
         }
-        mColor pixel = r->normalPalette[0];
-        if (r->d.vram && !GBARegisterDISPCNTIsForcedBlank(r->dispcnt)) {
-            /* Lower index wins equal priority. Transparent tile pixels
-               expose the next actual BG layer, then the backdrop. */
-            int priority=4;
-            for(unsigned i=0;i<4;++i) {
-                mColor c;
-                if (r->bg[i].priority < (unsigned)priority &&
-                    rgdsGBASample(r,i,x-40,y-40,&c)) {
-                    pixel=c;priority=r->bg[i].priority;
-                }
-            }
-        }
-        rgdsGBABorder[y*320+x]=pixel;
     }
+    return pixel;
+}
+void rgdsGBACaptureScanline(const struct GBAVideoSoftwareRenderer* r,int line) {
+    if (line<0 || line>=160) return;
+    mColor* row=rgdsGBABorder+(line+40)*320;
+    for(int x=0;x<40;++x) {
+        row[x]=rgdsGBAExteriorPixel(r,x-40,line,line);
+        row[280+x]=rgdsGBAExteriorPixel(r,240+x,line,line);
+    }
+    if(line==0) {
+        for(int y=-40;y<0;++y) for(int x=0;x<320;++x)
+            rgdsGBABorder[(y+40)*320+x]=rgdsGBAExteriorPixel(r,x-40,y,line);
+    }
+    if(line==159) {
+        for(int y=160;y<200;++y) for(int x=0;x<320;++x)
+            rgdsGBABorder[(y+40)*320+x]=rgdsGBAExteriorPixel(r,x-40,y,line);
+    }
+}
+static void rgdsGBARender(const mColor* native) {
+    for(int y=0;y<160;++y)
+        memcpy(rgdsGBABorder+(y+40)*320+40,native+y*VIDEO_WIDTH_MAX,240*sizeof(mColor));
 }
 #endif
 static mColor rgdsIntegerFrame[640*480];
@@ -217,3 +229,12 @@ s=s[:start]+"""\tif (!skipFrame) {
 \t}"""+s[end:]
 p.write_text(s)
 print("PASS: native 640x480 integer viewport output; no emulated LCD constants changed.")
+
+# Capture before the stock dirty-line early return and affine origin increment.
+renderer=p.parents[2]/"gba/renderers/video-software.c"
+t=renderer.read_text()
+anchor="\tbool dirty = softwareRenderer->scanlineDirty[y >> 5] & (1U << (y & 0x1F));"
+assert t.count(anchor)==1, "GBA scanline hook anchor mismatch"
+t=t.replace(anchor,"\textern void rgdsGBACaptureScanline(const struct GBAVideoSoftwareRenderer*, int);\n\trgdsGBACaptureScanline(softwareRenderer, y);\n"+anchor,1)
+renderer.write_text(t)
+print("PASS: live per-scanline affine origins for GBA expanded sides; vertical edge extrapolation.")

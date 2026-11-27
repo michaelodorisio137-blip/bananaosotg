@@ -12,11 +12,14 @@ assert s.count(anchor)==1
 # Restore it, so all three cores remain separate and independently selectable.
 lines=[
 '\tcp $(@D)/src/platform/libretro/libretro.c $(@D)/libretro.stock.c;',
+'\tcp $(@D)/src/gba/renderers/video-software.c $(@D)/video-software.stock.c;',
 '\tpython3 $(BR2_EXTERNAL_BANANA_PATH)/package/libretro-mgba/next-integer-viewport-source.py $(@D);',
 '\tcmake --build $(@D) --parallel $(PARALLEL_JOBS);',
 '\ttest -s "$$orig";',
 '\tcp "$$orig" $(@D)/mgba_integer_libretro.so;',
 '\tmv $(@D)/libretro.stock.c $(@D)/src/platform/libretro/libretro.c;',
+'\tmv $(@D)/video-software.stock.c $(@D)/src/gba/renderers/video-software.c;',
+'\ttouch $(@D)/src/gba/renderers/video-software.c;',
 '\ttouch $(@D)/src/platform/libretro/libretro.c;',
 ]
 s=s.replace(anchor,(' \\'+'\n').join(lines)+' \\'+'\n'+anchor,1)
