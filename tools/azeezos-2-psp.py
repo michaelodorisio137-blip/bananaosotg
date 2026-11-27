@@ -19,6 +19,10 @@ if mode=="--source":
     rep("libretro/Makefile.common",
         "ifeq ($(TARGET_ARCH),arm64)\nSOURCES_CXX += \\\n\t  $(EXTDIR)/libadrenotools/src/driver.cpp",
         "ifeq ($(TARGET_ARCH)-$(PLATFORM_EXT),arm64-android)\nSOURCES_CXX += \\\n\t  $(EXTDIR)/libadrenotools/src/driver.cpp")
+    # AArch64 libpng enables NEON automatically; compile its matching filter implementations.
+    rep("libretro/Makefile.common",
+        "\telse ifeq ($(TARGET_ARCH),arm64)\n      DYNAFLAGS += -D_ARCH_64",
+        "\telse ifeq ($(TARGET_ARCH),arm64)\n      DYNAFLAGS += -D_ARCH_64\n      SOURCES_C += $(EXTDIR)/libpng17/arm/arm_init.c \\\n                   $(EXTDIR)/libpng17/arm/filter_neon_intrinsics.c")
     p="libretro/libretro.cpp"
     rep(p,'info->library_name     = "PPSSPP";','info->library_name     = "PPSSPP Azeez 4:3";')
     rep(p,'   retro_base_dir /= "PPSSPP";','''   retro_base_dir /= "PPSSPP";
