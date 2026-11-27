@@ -33,6 +33,10 @@ const uint32_t* Emu::expanded_screen(bool bottom_screen, uint32_t* dest, int pit
     const uint32_t* src=bottom_screen ? bottom() : top();
     const int sc=scale();
     const unsigned dc=bg.DispCnt, mode=dc&7;
+    int sc3=1;
+    const uint32_t* scene=nullptr;
+    if (!bg.Num && (dc&8) && (dc&0x100))
+        scene=gpu.GetRenderer().Expanded3DFrame(sc3);
     auto read8=[&](unsigned a)->uint8_t {
         return bg.Num ? gpu.ReadVRAM_BBG<uint8_t>(a) : gpu.ReadVRAM_ABG<uint8_t>(a);
     };
@@ -54,7 +58,11 @@ const uint32_t* Emu::expanded_screen(bool bottom_screen, uint32_t* dest, int pit
     if (text_active) for(int pr=3;pr>=0;--pr) for(int i=3;i>=0;--i) {
         unsigned bc=bg.BGCnt[i];
         if (!(dc&(0x100u<<i)) || (bc&3)!=(unsigned)pr) continue;
-        if ((i==0 && !bg.Num && (dc&8)) || (i>=2 && mode!=0 &&
+        if (i==0 && !bg.Num && (dc&8)) {
+            if(scene) layers[layer_count++]={i,bc,0,0};
+            continue;
+        }
+        if ((i>=2 && mode!=0 &&
             !(mode==1 && i==2) && !(mode==3 && i==2))) continue;
         layers[layer_count++]={i,bc,((bc&0x1f00)<<3)+(bg.Num?0:((dc&0x38000000)>>11)),
             ((bc&0x003c)<<12)+(bg.Num?0:((dc&0x07000000)>>8))};
@@ -66,6 +74,24 @@ const uint32_t* Emu::expanded_screen(bool bottom_screen, uint32_t* dest, int pit
             const auto& layer=layers[k];
             const int i=layer.i;
             const unsigned bc=layer.bc;
+            if(i==0 && !bg.Num && (dc&8) && scene) {
+                unsigned sx=(unsigned)((x+32)*sc3*4/5);
+                unsigned sy=(unsigned)((y+24)*sc3*4/5);
+                if(sx<(unsigned)(256*sc3) && sy<(unsigned)(192*sc3)) {
+                    uint32_t p=scene[sy*256*sc3+(sx%sc3)*256+sx/sc3];
+                    unsigned a=(p>>24)&31;
+                    if(a) {
+                        unsigned r=((p&63)>>1), g=(((p>>8)&63)>>1), b=(((p>>16)&63)>>1);
+                        if(a<31) {
+                            r=(r*(a+1)+(c&31)*(31-a))>>5;
+                            g=(g*(a+1)+((c>>5)&31)*(31-a))>>5;
+                            b=(b*(a+1)+((c>>10)&31)*(31-a))>>5;
+                        }
+                        c=r|(g<<5)|(b<<10);
+                    }
+                }
+                continue;
+            }
             unsigned xx=(unsigned)(x+bg.BGXPos[i]) & ((bc&0x4000)?511:255);
             unsigned yy=(unsigned)(y+bg.BGYPos[i]) & ((bc&0x8000)?511:255);
             unsigned map=layer.map, chr=layer.chr;
@@ -161,3 +187,58 @@ rep("bananads/src/frontend_kms.cpp","    void write(int s, const uint32_t* top, 
     }
     void write(int s, const uint32_t* top, const uint32_t* bot) {''')
 print("DS: row copies, exterior-only sampling, one KMS write instead of two")
+
+# Expanded 3D camera in the existing optimized raster bins; not a native
+# 640x480 3D rasterizer. Explicit opt-in until game tests confirm it.
+rep("melonds/src/GPU.h","    virtual bool NeedsShaderCompile() { return false; }",'''    virtual const u32* Expanded3DFrame(int& scale) const { scale=1; return nullptr; }
+    virtual bool NeedsShaderCompile() { return false; }''')
+rep("melonds/src/GPU3D.cpp","    // clipping\n",'''    // Widen full-screen projection before clipping, using new vertices
+    // only (the shared strip vertices have already been transformed).
+    static const bool azWide=getenv("AZEEZ_DS_WIDE3D")!=nullptr;
+    if(azWide && Viewport[0]==0 && Viewport[3]==0 &&
+       Viewport[4]==256 && Viewport[5]==192) for(int i=clipstart;i<nverts;i++) {
+        clippedvertices[i].Position[0]=(s32)((s64)clippedvertices[i].Position[0]*4/5);
+        clippedvertices[i].Position[1]=(s32)((s64)clippedvertices[i].Position[1]*4/5);
+    }
+    // clipping
+''')
+rep("melonds/src/GPU3D.cpp","if (GeomReject && PolygonClippedAway())","if (!getenv(\"AZEEZ_DS_WIDE3D\") && GeomReject && PolygonClippedAway())")
+rep("bananads/src/gengis_renderer.h","    int Scale() const { return Scale_; }",'''    int Scale() const { return Scale_; }
+    const uint32_t* ExpandedFrame(int& scale) const {
+        scale=Scale_;
+        return Wide3D && !GPU3D.AbortFrame && !GPU3D.RenderXPos ? Presented : nullptr;
+    }''')
+rep("bananads/src/gengis_renderer.h","    bool QuarterRows() const { return !GPU3D.AbortFrame && !GPU3D.RenderXPos; }","    bool QuarterRows() const { return !Wide3D && !GPU3D.AbortFrame && !GPU3D.RenderXPos; }")
+rep("bananads/src/gengis_renderer.h","    alignas(16) uint32_t Scrolled[16][GX_W];",'''    alignas(16) uint32_t Scrolled[16][GX_W];
+    alignas(16) uint32_t WideScratch[16][GX_W];
+    bool Wide3D=false;
+    const uint32_t* Presented=nullptr;''')
+rep("bananads/src/gengis_renderer.h","    void SetRenderSettings(melonDS::RendererSettings&) override {}",'''    const melonDS::u32* Expanded3DFrame(int& scale) const override {
+        return static_cast<GengisRenderer3D*>(this->Rend3D.get())->ExpandedFrame(scale);
+    }
+    void SetRenderSettings(melonDS::RendererSettings&) override {}''')
+rep("bananads/src/gengis_renderer.cpp","    gx_zva = Zva;",'''    Wide3D=getenv("AZEEZ_DS_WIDE3D")!=nullptr;
+    gx_zva = Zva;''')
+rep("bananads/src/gengis_renderer.cpp","    WaitAll();  // the last frame's bins read VRAM and the polygons: done before either changes",'''    WaitAll();  // the last frame's bins read VRAM and the polygons: done before either changes
+    if(Wide3D) Presented=Out;''')
+rep("bananads/src/gengis_renderer.cpp","    Textures.clear();\n    Stale.clear();",'''    Presented=nullptr;
+    Textures.clear();
+    Stale.clear();''')
+rep("bananads/src/gengis_renderer.cpp","    if (line < GX_H) WaitBin((unsigned)line / (GX_BL / Sub));",'''    if(Wide3D) {
+        const int sca=Scale_;
+        int yy=((std::max(0,std::min(191,line))*sca+q/sca)*4+24*sca*4)/5;
+        yy=std::min(192*sca-1,yy);
+        WaitBin((unsigned)(yy/sca)/(GX_BL/Sub));
+        const uint32_t* row=Out+yy*256*sca;
+        const int xpos=GPU3D.RenderXPos;
+        const int scroll=(xpos&256)?xpos-512:xpos;
+        for(int i=0;i<256;i++) {
+            int native=i+scroll;
+            if(native<0 || native>=256) { WideScratch[q][i]=0; continue; }
+            unsigned sx=((native+32)*sca*4+(q%sca)*4)/5;
+            WideScratch[q][i]=row[(sx%sca)*256+sx/sca];
+        }
+        return WideScratch[q];
+    }
+    if (line < GX_H) WaitBin((unsigned)line / (GX_BL / Sub));''')
+print("Experimental 3D expanded camera and exterior 3D compositor integrated")
