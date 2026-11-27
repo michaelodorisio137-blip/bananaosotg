@@ -18,8 +18,14 @@ case "$1" in
     ppsspp|ppsspp_azeez) BANANA_SYSTEM=psp ;;
 esac
 export BANANA_SYSTEM
-case $BANANA_SYSTEM in
-n64|psx|saturn|psp|"") ;;""")
+AZ_GBA_GPU=0
+if [ "$BANANA_SYSTEM" = gba ] && [ -s /usr/lib/libretro/mgba_gles_preview_libretro.so ]; then
+    if [ "$(setting core.gba)" = mgba_gles_preview ] || [ -f /data/banana/gba-gpu.enable ] || [ -f /data/banana/gba-3d-trace.enable ]; then
+        AZ_GBA_GPU=1
+    fi
+fi
+case "$BANANA_SYSTEM:$AZ_GBA_GPU" in
+n64:*|psx:*|saturn:*|psp:*|:*|gba:1) ;;""")
 # Explicitly select the packaged GPU cores; preserve downloaded alternative if
 # the Saturn core is absent. Do not alter unrelated core settings.
 rep('[ -f "$CORE" ] || { echo "no core $1" >&2; exit 1; }',
@@ -32,14 +38,15 @@ case "$BANANA_SYSTEM" in
     psp)
         [ -s /usr/lib/libretro/ppsspp_azeez_libretro.so ] && CORE=/usr/lib/libretro/ppsspp_azeez_libretro.so ;;
 esac
+[ "$AZ_GBA_GPU" = 1 ] && CORE=/usr/lib/libretro/mgba_gles_preview_libretro.so
 [ -f "$CORE" ] || { echo "no core $1" >&2; exit 1; }""")
 rep("BKEYS='^(video_shader_enable|video_smooth|",
     "BKEYS='^(video_driver|video_context_driver|video_threaded|video_max_swapchain_images|crt_switch_resolution|video_shader_enable|video_smooth|")
 anchor="# anything RetroArch keeps that retroarch.cfg doesn't place"
 rep(anchor, """# Azeez GPU session settings. Reuse the existing crash-safe config backup.
 # No changes to the user's global driver, CRT, or integer-scaling preferences.
-case "$BANANA_SYSTEM" in
-saturn|psp)
+case "$BANANA_SYSTEM:$AZ_GBA_GPU" in
+saturn:*|psp:*|gba:1)
     if [ -z "$BA" ]; then
         grep -E "$BKEYS" "$CFG" > "$BKEEP.new" || :
         mv "$BKEEP.new" "$BKEEP" && sync
