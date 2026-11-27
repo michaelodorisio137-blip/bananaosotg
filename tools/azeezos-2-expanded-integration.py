@@ -55,3 +55,6 @@ define BANANADS_AZEEZ_EXPANDED
 endef
 BANANADS_POST_PATCH_HOOKS += BANANADS_AZEEZ_EXPANDED""")
 print("Expanded NES, N64, PS1 source hooks and optional Genesis GX Wide / bsnes HD packages integrated.")
+
+import subprocess
+subprocess.run([sys.executable, str(Path(__file__).with_name('azeezos-2-virtualboy.py')), '--build', str(root)], check=True)
