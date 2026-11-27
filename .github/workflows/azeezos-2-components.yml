@@ -1,5 +1,10 @@
 name: AzeezOS targeted component build
 on:
+  workflow_call:
+    inputs:
+      component:
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       component:
@@ -27,7 +32,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: azeezos-components-${{ inputs.component || 'auto' }}
+  group: azeezos-components-${{ github.workflow }}-${{ inputs.component || 'auto' }}
   cancel-in-progress: false
 jobs:
   build:
