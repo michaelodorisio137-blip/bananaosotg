@@ -23,6 +23,22 @@ if sys.argv[1]=="--ui":
     replace("ui/src/settings_defaults.cpp",
         '{ "ra_border", "off", ENUM, ON_OFF, 0, 0, true },',
         '{ "ra_border", "off", ENUM, ON_OFF, 0, 0, true },\n\t\t\t{ "azeez_native_integer", "off", ENUM, ON_OFF, 0, 0, true },\n\t\t\t{ "azeez_gba_hd_affine", "on", ENUM, ON_OFF, 0, 0, true },')
+    p=root/"ui/src/settings.cpp"
+    s=p.read_text().replace("BananaDS","melonDS")
+    s=s.replace('getConfValue("/etc/banana/settings.conf", "nds_emulator", "superdrastic")','getConfValue("/etc/banana/settings.conf", "nds_emulator", "bananads")')
+    anchor='add(BD, "nds", "Edge marking",'
+    assert s.count(anchor)==1
+    s=s.replace(anchor,'''add(BD, "nds", "Expanded 3D camera", "Experimental: expand the 3D scene together with the 2D viewport in Native integer mode. Turn off if a game has visual problems.",
+                menu, "azeez_ds_wide3d", { "On", "Off" }, { "on", "off" });
+            add(BD, "nds", "Fast expanded 3D", "Use native 3D resolution for maximum speed. Off retains the selected higher resolution; per-game overrides take precedence.",
+                menu, "azeez_ds_fast", { "On", "Off" }, { "on", "off" });
+            '''+anchor,1)
+    p.write_text(s)
+    p=root/"ui/src/settings_defaults.cpp"
+    s=p.read_text().replace('{ "nds_emulator", "superdrastic",','{ "nds_emulator", "bananads",')
+    anchor='{ "azeez_gba_hd_affine", "on", ENUM, ON_OFF, 0, 0, true },'
+    assert s.count(anchor)==1
+    p.write_text(s.replace(anchor,anchor+'\n\t\t\t{ "azeez_ds_wide3d", "on", ENUM, ON_OFF, 0, 0, true },\n\t\t\t{ "azeez_ds_fast", "on", ENUM, ON_OFF, 0, 0, true },'))
     sys.exit(0)
 
 base="usr/libexec/banana/"
@@ -100,7 +116,19 @@ fi
 replace(bd,'cd $D\nexec /usr/bin/bananads "$ROM"',
     readmode+'''if az_native_integer; then
     export AZEEZ_EXPANDED_VIEWPORT=1 BANANADS_KMS_SHADER=none
-    # The renderer keeps native or 2x 3D according to the existing setting.
+    # Expanded 3D camera is optional; native 3D is the fast default.
+    az_ds_setting() {
+        for f in /data/banana/settings.conf /etc/banana/settings.conf; do
+            v=$(sed -n "/^ *$1 *= */{s///;h};\\\${x;p}" "$f" 2>/dev/null)
+            if [ -n "$v" ]; then printf '%s' "$v"; return; fi
+        done
+    }
+    if [ "$(az_ds_setting azeez_ds_wide3d)" != off ]; then
+        export AZEEZ_DS_WIDE3D=1 MELONDS_GEOMREJECT=0
+    fi
+    if [ "$(az_ds_setting azeez_ds_fast)" != off ]; then
+        export BANANADS_RENDER_SCALE="${BANANADS_RENDER_SCALE:-1}"
+    fi
 fi
 cd $D
 exec /usr/bin/bananads "$ROM"''')
@@ -108,6 +136,31 @@ p=root/"etc/banana/settings.conf"
 s=p.read_text()
 if "azeez_native_integer =" not in s:
     p.write_text(s+"\n# Native integer presentation (opt-in)\nazeez_native_integer = off\n")
+# Migrate the default DS emulator once; explicit per-game choices survive.
+p=root/"etc/banana/settings.conf"
+s=p.read_text().replace("nds_emulator = superdrastic","nds_emulator = bananads")
+if "azeez_ds_wide3d =" not in s:
+    s+="\nazeez_ds_wide3d = on\nazeez_ds_fast = on\n"
+p.write_text(s)
+p=root/(base+"run-nds")
+s=p.read_text()
+if "# AzeezOS melonDS transition" not in s:
+    anchor="want=$(awk"
+    assert s.count(anchor)==1
+    s=s.replace(anchor,'''# AzeezOS melonDS transition
+M=/data/banana/.azeez-melonds-default
+C=/data/banana/settings.conf
+if [ ! -e "$M" ]; then
+    mkdir -p /data/banana
+    if [ -f "$C" ]; then
+        sed -i 's/^ *nds_emulator *= *.*/nds_emulator = bananads/' "$C"
+    fi
+    touch "$M"
+fi
+'''+anchor,1)
+    s=s.replace("*) want=superdrastic ;;","*) want=bananads ;;")
+    p.write_text(s)
+subprocess.run(["sh","-n",str(p)],check=True)
 for f in (ra,bf,ds,bd):
     subprocess.run(["sh","-n",str(root/f)],check=True)
 print("Native integer presentation installed for RetroArch, BananaFront, SuperDrastic, BananaDS")
