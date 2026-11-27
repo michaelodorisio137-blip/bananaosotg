@@ -15,22 +15,23 @@ if kind=="nes":
     rep(p, "static int rendis = 0;", """static int rendis = 0;
 uint8_t azeez_nes_sides[240][64];
 uint8_t azeez_nes_emphasis[240];
-/* Read the currently mapped nametable and CHR without invoking mapper hooks,
- * changing PPU registers, or clocking extra dots. The original 256 pixels
- * are kept separately. Special mapper fetches are not reconstructed. */
-static void azeez_nes_sample_sides(void) {
-    int i;
-    unsigned v=RefreshAddr;
+/* Sample each exterior at the corresponding end of the actual PPU tile
+ * pipeline, not DoLine (which runs after a variable number of fetches).
+ * v is the origin of the first visible tile for that edge. No mapper
+ * clocks, sprite budgets, CPU cycles, or original pixels are changed. */
+static void azeez_nes_sample_edge(unsigned v, int right, int visible) {
     unsigned cy=(v>>5)&31, fy=(v>>12)&7;
     unsigned emph=(PPU[1]>>5)&7;
+    int i;
+    if (scanline < 0 || scanline >= 240) return;
     azeez_nes_emphasis[scanline]=emph;
-    for(i=0;i<64;i++) {
-        int sx=i<32 ? i-32 : i+224;
+    for(i=0;i<32;i++) {
+        int sx=right ? i : i-32;
         unsigned wx=(unsigned)(sx+XOffset+8*(v&31)+256*((v>>10)&1))&511;
         unsigned page=((v>>10)&2)|(wx>>8);
         unsigned tx=(wx>>3)&31;
         unsigned pen=PALRAM[0]&63;
-        if (ScreenON && !(rendis&2) && cy<30 && vnapage[page]) {
+        if (visible && ScreenON && !(rendis&2) && cy<30 && vnapage[page]) {
             unsigned tile=vnapage[page][cy*32+tx];
             unsigned attr=vnapage[page][0x3c0+(cy>>2)*8+(tx>>2)];
             unsigned shift=((cy&2)<<1)|(tx&2);
@@ -43,17 +44,28 @@ static void azeez_nes_sample_sides(void) {
             }
         }
         if(PPU[1]&1) pen&=0x30;
-        azeez_nes_sides[scanline][i]=pen;
+        azeez_nes_sides[scanline][right*32+i]=pen;
     }
-}""")
-    # The same MMC5 statement also occurs after the frame loop; match DoLine only.
-    rep(p, "\n\tif (MMC5Hack && (ScreenON || SpriteON)) MMC5_hb(scanline);\n\n\tX6502_Run(256);",
-        """
-\tif (scanline >= 0 && scanline < 240 && getenv("AZEEZ_EXPANDED_VIEWPORT"))
-        azeez_nes_sample_sides();
-\tif (MMC5Hack && (ScreenON || SpriteON)) MMC5_hb(scanline);
-
-\tX6502_Run(256);""")
+}
+static unsigned azeez_nes_rewind_x(unsigned v, unsigned tiles) {
+    unsigned x=(((v>>10)&1)*32+(v&31)+64-tiles)&63;
+    return (v&~0x41fu)|(x&31)|((x&32)<<5);
+}
+""")
+    # RefreshLine can be entered before DoLine during the 16-dot CPU run.
+    # Snapshot before the first fetch; after the 34th fetch, rewind the
+    # two lookahead tiles to the right edge (native x=256).
+    rep(p, "\tif (numtiles <= 0) return;\n", """\tif (numtiles <= 0) return;
+    if (getenv("AZEEZ_EXPANDED_VIEWPORT") && firsttile==0) {
+        azeez_nes_sample_edge(smorkus,0,1);
+        /* Initialize right edge even when rendering turns off mid-line. */
+        azeez_nes_sample_edge(smorkus,1,0);
+    }
+""")
+    rep(p, "\tRefreshAddr = smorkus;\n\tif (firsttile <= 2", """    if (getenv("AZEEZ_EXPANDED_VIEWPORT") && lasttile==34)
+        azeez_nes_sample_edge(azeez_nes_rewind_x(smorkus,2),1,1);
+\tRefreshAddr = smorkus;
+\tif (firsttile <= 2""")
     p="src/drivers/libretro/libretro.c"
     rep(p,"void retro_get_system_av_info(struct retro_system_av_info *info)\n{",
         """extern uint8_t azeez_nes_sides[240][64];
