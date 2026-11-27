@@ -14,9 +14,10 @@ static inline uint32_t az_texel(const poly_t *p, uint16_t u, uint16_t v) {
     return p->paletted ? p->pal[p->idx8[i]] : p->texels32[i];
 }
 static inline uint32_t az_filtered(const poly_t *p, uint32_t U, uint32_t V, uint32_t nearest) {
-    /* Preserve hardware alpha test, translucent edges and transparent cutouts.
-       Only blend RGB across fully opaque texels. Coordinates have 19 frac bits. */
-    if (!gx_texture_filter || (nearest >> 24) != 31) return nearest;
+    /* Preserve hardware alpha test and transparent cutouts. Interpolate
+       RGB only between texels with identical nonzero alpha. */
+    const unsigned alpha=nearest>>24;
+    if (!gx_texture_filter || !alpha || alpha>31) return nearest;
     U -= 1u << 18; V -= 1u << 18;
     uint16_t u = (uint16_t)((int16_t)(U >> 16) >> 3);
     uint16_t v = (uint16_t)((int16_t)(V >> 16) >> 3);
@@ -33,7 +34,7 @@ static inline uint32_t az_filtered(const poly_t *p, uint32_t U, uint32_t V, uint
     for (unsigned i=0;i<4;i++) {
         if (!w[i]) continue;
         c[i]=az_texel(p,(uint16_t)(u+(i&1)),(uint16_t)(v+(i>>1)));
-        if ((c[i]>>24)!=31) return nearest;
+        if ((c[i]>>24)!=alpha) return nearest;
     }
     /* Pack R/B into independent 32-bit lanes. The largest weighted
        sum is 63*65536, so neither lane can carry into the other.
@@ -47,7 +48,7 @@ static inline uint32_t az_filtered(const poly_t *p, uint32_t U, uint32_t V, uint
     }
     unsigned shift=div==256 ? 8 : 16;
     rb+=((uint64_t)(div/2)<<32)|(div/2);
-    return (31u<<24)|((unsigned)(rb>>shift)&63u)|
+    return (alpha<<24)|((unsigned)(rb>>shift)&63u)|
         (((green+div/2)>>shift)<<8)|((unsigned)((rb>>(32+shift))&63u)<<16);
 }
 
@@ -108,6 +109,14 @@ int main(void) {
     assert(az_filtered(&p,H-F,H,O)==(O|40));
     p.ms=FLIP;
     assert(az_filtered(&p,H-F,H,O)==O);
+    p.ms=CLAMP;
+    for (unsigned i=0;i<4;i++) pixels[i]=(pixels[i]&0xffffff)|(15u<<24);
+    gx_texture_filter=1;
+    assert(az_filtered(&p,H+Q,H+Q,15u<<24)==((15u<<24)|15));
+    gx_texture_filter=3;
+    assert(az_filtered(&p,H+Q,H+Q,15u<<24)==((15u<<24)|20));
+    pixels[1]=O|40;
+    assert(az_filtered(&p,H+Q,H+Q,(15u<<24)|7)==((15u<<24)|7));
     return 0;
 }
 """
@@ -146,10 +155,13 @@ BANANADS_POST_PATCH_HOOKS += BANANADS_AZEEZ_FILTER""")
 
 g=root/"bananads/gengis"
 edit(g/"gx.h","void gx_init(void);",
-    "extern int gx_texture_filter;\nvoid gx_init(void);")
+    "extern int gx_texture_filter;\nextern int rast_texfilter;\nvoid gx_init(void);")
 edit(root/"bananads/src/emu.cpp",'const int threads = (int)cfg_.num("render.gengis_threads", 3);',
     '''const long tf = cfg_.num("render.texfilter", 0);
         gx_texture_filter = tf == 1 || tf == 3 ? (int)tf : 0;
+        // Gengis already has AArch64 bilinear kernels for both raster layouts.
+        rast_texfilter = gx_texture_filter == 1 ? 1 : 0;
+        Log(LogLevel::Info, "[azeez] DS 3D requested scale=%d, texture filter=%d (0 nearest, 1 bilinear, 3 three-point)\\n", scale, gx_texture_filter);
         const int threads = (int)cfg_.num("render.gengis_threads", 3);''')
 edit(g/"gx.c","const int defer = gx_defer && !gx_ref;",
     "const int defer = gx_defer && !gx_ref && !gx_texture_filter;")
@@ -158,9 +170,19 @@ edit(g/"fused.c","int use_neon = 2;",
 edit(g/"fused.c","uint32_t tr = t & 0xff, tg = (t >> 8) & 0xff, tb = (t >> 16) & 0xff, ta = t >> 24;",
     '''if (m && P->mode != 3) t = az_filtered(P, U0 + (uint32_t)(du * st), V0 + (uint32_t)(dv * st), t);
             uint32_t tr = t & 0xff, tg = (t >> 8) & 0xff, tb = (t >> 16) & 0xff, ta = t >> 24;''')
+edit(g/"fused.c","    P.fogused = 0; P.pass = 0; P.noat = 0;",
+    "    int az_opaque_texture = 0;\n    P.fogused = 0; P.pass = 0; P.noat = 0;")
+edit(g/"fused.c","        P.noat = ca > (P.aref & 0xff);",
+    "        az_opaque_texture = ta == 31;\n        P.noat = ca > (P.aref & 0xff);")
 edit(g/"fused.c","    /* batches: runs of lines with pixels,",
-    '''    /* Filtered polygons use the scalar reference path; nearest and
-       untextured polygons retain the existing assembly acceleration. */
-    if (gx_texture_filter && (flags & 2) && P.mode != 3) bf = 0;
+    '''    /* Opaque modulate textures can use the existing vectorized bilinear
+       kernels at all raster scales. Preserve alpha semantics for cutouts
+       and other shading modes via the RGB-only scalar sampler. Three-point
+       uses its distinct triangular sampler, never bilinear by substitution. */
+    if (gx_texture_filter && (flags & 2) && P.mode != 3) {
+        if (gx_texture_filter == 1 && P.mode == 0 && az_opaque_texture)
+            bf = asm_batch_for(&P);
+        else bf = 0;
+    }
     /* batches: runs of lines with pixels,''')
 print("BananaDS native polygon texture filtering source patch applied")
