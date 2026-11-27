@@ -30,15 +30,15 @@ if sys.argv[1]=="--ui":
     assert s.count(anchor)==1
     s=s.replace(anchor,'''add(BD, "nds", "Expanded 3D camera", "Experimental: expand the 3D scene together with the 2D viewport in Native integer mode. Turn off if a game has visual problems.",
                 menu, "azeez_ds_wide3d", { "On", "Off" }, { "on", "off" });
-            add(BD, "nds", "Fast expanded 3D", "Use native 3D resolution and nearest textures for maximum speed. Off restores selected resolution and filtering; per-game resolution overrides take precedence.",
-                menu, "azeez_ds_fast", { "On", "Off" }, { "on", "off" });
+            add(BD, "nds", "DS integer presentation", "Use a centered 320x240 canvas on RG DS. Off restores the original presentation unless global Native integer mode is on.",
+                menu, "azeez_ds_integer", { "On", "Off" }, { "on", "off" });
             '''+anchor,1)
     p.write_text(s)
     p=root/"ui/src/settings_defaults.cpp"
     s=p.read_text().replace('{ "nds_emulator", "superdrastic",','{ "nds_emulator", "bananads",')
     anchor='{ "azeez_gba_hd_affine", "on", ENUM, ON_OFF, 0, 0, true },'
     assert s.count(anchor)==1
-    p.write_text(s.replace(anchor,anchor+'\n\t\t\t{ "azeez_ds_wide3d", "on", ENUM, ON_OFF, 0, 0, true },\n\t\t\t{ "azeez_ds_fast", "on", ENUM, ON_OFF, 0, 0, true },'))
+    p.write_text(s.replace(anchor,anchor+'\n\t\t\t{ "azeez_ds_wide3d", "on", ENUM, ON_OFF, 0, 0, true },\n\t\t\t{ "azeez_ds_integer", "on", ENUM, ON_OFF, 0, 0, true },'))
     sys.exit(0)
 
 base="usr/libexec/banana/"
@@ -114,20 +114,19 @@ replace(ds,'# the 3D always through the Gengis Engine',
 fi
 # the 3D always through the Gengis Engine''')
 replace(bd,'cd $D\nexec /usr/bin/bananads "$ROM"',
-    readmode+'''if az_native_integer; then
+    readmode+'''az_ds_setting() {
+    for f in /data/banana/settings.conf /etc/banana/settings.conf; do
+        v=$(awk -v k="$1" '$0 ~ ("^ *" k " *= *") {sub(/^[^=]*= */,""); v=$0} END {print v}' "$f" 2>/dev/null)
+        if [ -n "$v" ]; then printf '%s' "$v"; return; fi
+    done
+}
+# DS exact presentation is independent of legacy fast-mode settings.
+# Never override render.scale or render.texfilter: environment/per-game
+# overrides and bananads.conf remain the authoritative renderer controls.
+if az_native_integer || [ "$(az_ds_setting azeez_ds_integer)" != off ]; then
     export AZEEZ_EXPANDED_VIEWPORT=1 BANANADS_KMS_SHADER=none
-    # Expanded 3D camera is optional; native 3D is the fast default.
-    az_ds_setting() {
-        for f in /data/banana/settings.conf /etc/banana/settings.conf; do
-            v=$(awk -v k="$1" '$0 ~ ("^ *" k " *= *") {sub(/^[^=]*= */,""); v=$0} END {print v}' "$f" 2>/dev/null)
-            if [ -n "$v" ]; then printf '%s' "$v"; return; fi
-        done
-    }
     if [ "$(az_ds_setting azeez_ds_wide3d)" != off ]; then
         export AZEEZ_DS_WIDE3D=1 MELONDS_GEOMREJECT=0 BANANADS_RENDER_GEOM_REJECT=off
-    fi
-    if [ "$(az_ds_setting azeez_ds_fast)" != off ]; then
-        export BANANADS_RENDER_SCALE="${BANANADS_RENDER_SCALE:-1}" BANANADS_RENDER_TEXFILTER=0
     fi
 fi
 cd $D
@@ -140,7 +139,9 @@ if "azeez_native_integer =" not in s:
 p=root/"etc/banana/settings.conf"
 s=p.read_text().replace("nds_emulator = superdrastic","nds_emulator = bananads")
 if "azeez_ds_wide3d =" not in s:
-    s+="\nazeez_ds_wide3d = on\nazeez_ds_fast = on\n"
+    s+="\nazeez_ds_wide3d = on\n"
+if "azeez_ds_integer =" not in s:
+    s+="\nazeez_ds_integer = on\n"
 p.write_text(s)
 p=root/(base+"run-nds")
 s=p.read_text()
