@@ -45,7 +45,7 @@ saturn|psp)
         mv "$BKEEP.new" "$BKEEP" && sync
         : > "$BCFG"
     fi
-    cat >> "$BCFG" <<'AZ_GPU'
+    cat > "$BCFG" <<'AZ_GPU'
 video_driver = "gl"
 video_context_driver = "kms"
 video_threaded = "false"
