@@ -21,9 +21,7 @@ private:
 rep("bananads/src/emu.h","    const uint32_t* bottom() const;",
     """    const uint32_t* bottom() const;
     const uint32_t* expanded_screen(bool bottom, uint32_t* dest=nullptr, int pitch=640) const;""")
-rep("bananads/src/emu.cpp",'    const long scale_cfg = cfg_.num("render.scale", 1);',
-    '''    const long configured_scale = cfg_.num("render.scale", 1);
-    const long scale_cfg = getenv("AZEEZ_EXPANDED_VIEWPORT") && configured_scale > 2 ? 2 : configured_scale;''')
+# Keep the upstream 1x-4x rasterizer selection intact. Presentation is independent.
 rep("bananads/src/emu.cpp","void Emu::set_audio_rate(double hz) {",r"""
 // Read-only exterior tilemap sampling. Native LCD composition is untouched.
 const uint32_t* Emu::expanded_screen(bool bottom_screen, uint32_t* dest, int pitch) const {
@@ -67,7 +65,7 @@ const uint32_t* Emu::expanded_screen(bool bottom_screen, uint32_t* dest, int pit
         layers[layer_count++]={i,bc,((bc&0x1f00)<<3)+(bg.Num?0:((dc&0x38000000)>>11)),
             ((bc&0x003c)<<12)+(bg.Num?0:((dc&0x07000000)>>8))};
     }
-    auto sample=[&](int x,int y)->uint32_t {
+    auto sample=[&](int x,int y,unsigned dx,unsigned dy)->uint32_t {
         unsigned c=backdrop;
         if (blank) return 0xffffffffu;
         for(unsigned k=0;k<layer_count;++k) {
@@ -75,8 +73,10 @@ const uint32_t* Emu::expanded_screen(bool bottom_screen, uint32_t* dest, int pit
             const int i=layer.i;
             const unsigned bc=layer.bc;
             if(i==0 && !bg.Num && (dc&8) && scene) {
-                unsigned sx=(unsigned)((x+32)*sc3*4/5);
-                unsigned sy=(unsigned)((y+24)*sc3*4/5);
+                // Map physical pixels, not just the logical 320x240 grid.
+                // The wide camera fills the existing high-resolution raster.
+                unsigned sx=(unsigned)(((2*(x+32)+dx)*sc3*2)/5);
+                unsigned sy=(unsigned)(((2*(y+24)+dy)*sc3*2)/5);
                 if(sx<(unsigned)(256*sc3) && sy<(unsigned)(192*sc3)) {
                     uint32_t p=scene[sy*256*sc3+(sx%sc3)*256+sx/sc3];
                     unsigned a=(p>>24)&31;
@@ -127,6 +127,17 @@ const uint32_t* Emu::expanded_screen(bool bottom_screen, uint32_t* dest, int pit
             if(sc==2) {
                 memcpy(a+64,src+(y-24)*2*512,512*sizeof(uint32_t));
                 memcpy(b+64,src+((y-24)*2+1)*512,512*sizeof(uint32_t));
+            } else if(sc>=3) {
+                // Select two subpixels WITHIN each native DS pixel. 2D
+                // elements keep exactly two output pixels per native pixel;
+                // higher-resolution 3D retains its independent samples.
+                const int lo=sc/4, hi=(3*sc)/4;
+                const uint32_t* ra=src+((y-24)*sc+lo)*256*sc;
+                const uint32_t* rb=src+((y-24)*sc+hi)*256*sc;
+                for(int i=0;i<256;i++) {
+                    a[64+i*2]=ra[i*sc+lo]; a[65+i*2]=ra[i*sc+hi];
+                    b[64+i*2]=rb[i*sc+lo]; b[65+i*2]=rb[i*sc+hi];
+                }
             } else {
                 const uint32_t* row=src+(y-24)*256;
                 for(int i=0;i<256;i++) a[64+i*2]=a[65+i*2]=b[64+i*2]=b[65+i*2]=row[i];
@@ -136,8 +147,15 @@ const uint32_t* Emu::expanded_screen(bool bottom_screen, uint32_t* dest, int pit
             int first=center && span?288:0;
             int last=center && !span?32:320;
             for(int i=first;i<last;i++) {
-                uint32_t p=sample(i-32,y-24);
-                a[i*2]=a[i*2+1]=b[i*2]=b[i*2+1]=p;
+                if(scene && sc3>1) {
+                    a[i*2]=sample(i-32,y-24,0,0);
+                    a[i*2+1]=sample(i-32,y-24,1,0);
+                    b[i*2]=sample(i-32,y-24,0,1);
+                    b[i*2+1]=sample(i-32,y-24,1,1);
+                } else {
+                    uint32_t p=sample(i-32,y-24,0,0);
+                    a[i*2]=a[i*2+1]=b[i*2]=b[i*2+1]=p;
+                }
             }
         }
     }
@@ -150,7 +168,9 @@ rep(p,"    int fw = 0, fh = 0;", "    bool az_expanded = false;\n    int fw = 0,
 rep(p,"        fw = 256 * scale;\n        fh = 192 * scale;",
     """        az_expanded = getenv("AZEEZ_EXPANDED_VIEWPORT") && W == 640 && H == 480;
         fw = az_expanded ? 640 : 256 * scale;
-        fh = az_expanded ? 480 : 192 * scale;""")
+        fh = az_expanded ? 480 : 192 * scale;
+        Log(LogLevel::Info, "[azeez] DS presentation: %dx%d, internal 3D %dx, exact canvas=%s\\n",
+            W,H,scale,az_expanded ? "on" : "off");""")
 rep(p,"        if (!hw) return false;\n        for (auto& pb : buf)",
     """        if (!hw || az_expanded) return false;
         for (auto& pb : buf)""")
@@ -187,8 +207,9 @@ rep("bananads/src/frontend_kms.cpp","    void write(int s, const uint32_t* top, 
     void write(int s, const uint32_t* top, const uint32_t* bot) {''')
 print("DS: row copies, exterior-only sampling, one KMS write instead of two")
 
-# Expanded 3D camera in the existing optimized raster bins; not a native
-# 640x480 3D rasterizer. Explicit opt-in until game tests confirm it.
+# Expanded 3D camera in the existing optimized raster bins; at 3x and
+# 4x the raster exceeds 640x480, while 1x/2x remain lower detail.
+# This is not an independent 640x480 rasterizer. Hardware validation required.
 rep("melonds/src/GPU.h","    virtual bool NeedsShaderCompile() { return false; }",'''    virtual const u32* Expanded3DFrame(int& scale) const { scale=1; return nullptr; }
     virtual bool NeedsShaderCompile() { return false; }''')
 rep("melonds/src/GPU3D.cpp","    // clipping\n",'''    // Widen full-screen projection before clipping, using new vertices
