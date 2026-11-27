@@ -1,5 +1,6 @@
 name: NES exterior scanline repair
 on:
+  workflow_call:
   workflow_dispatch:
   push:
     branches: [azeezos-2.0]
@@ -9,7 +10,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: azeezos-nes-seam
+  group: azeezos-nes-seam-${{ github.workflow }}
   cancel-in-progress: true
 jobs:
   build:
