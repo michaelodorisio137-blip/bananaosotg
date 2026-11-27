@@ -100,6 +100,24 @@ jobs:
           PROPOSED: ${{ inputs.proposed_feature }}
         run: |
           set -eu
+          COMPILED=b37f22ba72f62682a6eb0249cdf8b011efb47c49
+          if [ "$PROPOSED" != true ] && git cat-file -e "$COMPILED^{commit}" && git diff --quiet "$COMPILED" HEAD -- . ':!.github/workflows/azeezos-2-preview.yml'; then
+            if gh run download 45950186457 -R "$GITHUB_REPOSITORY" -n "preview-binaries-$GROUP" -D component-output && test -s component-output/SOURCE-COMMIT && test -s component-output/SHA256SUMS; then
+              SOURCE=$(cat component-output/SOURCE-COMMIT)
+              if [ "$SOURCE" = "$COMPILED" ] || { [ "$GROUP" != handheld ] && [ "$SOURCE" = 2d9a345a709008cd3f4cf6ff59c9230d57397d00 ] && git diff --quiet "$SOURCE" "$COMPILED" -- . ':!.github/workflows/azeezos-2-preview.yml' ':!tools/azeezos-2-psp.py'; }; then
+                if [ "$GROUP" = handheld ]; then
+                  # GitHub omitted exactly these non-runtime repository metadata files.
+                  awk '$2 != "usr/share/banana/PPSSPP/debugger/.git" && $2 != "usr/share/banana/PPSSPP/debugger/.nojekyll"' component-output/SHA256SUMS > component-output/SHA256SUMS.clean
+                  mv component-output/SHA256SUMS.clean component-output/SHA256SUMS
+                fi
+                if (cd component-output && sha256sum -c SHA256SUMS); then
+                  echo "Reusing verified $GROUP from completed compilation"
+                  exit 0
+                fi
+              fi
+            fi
+            rm -rf component-output
+          fi
           PREVIOUS=2d9a345a709008cd3f4cf6ff59c9230d57397d00
           if [ "$GROUP" != handheld ] && [ "$PROPOSED" != true ] && git cat-file -e "$PREVIOUS^{commit}" && git diff --quiet "$PREVIOUS" HEAD -- . ':!.github/workflows/azeezos-2-preview.yml' ':!tools/azeezos-2-psp.py'; then
             if gh run download 45943156056 -R "$GITHUB_REPOSITORY" -n "preview-binaries-$GROUP" -D component-output && test "$(cat component-output/SOURCE-COMMIT)" = "$PREVIOUS" && test -s component-output/SHA256SUMS && (cd component-output && sha256sum -c SHA256SUMS); then
@@ -122,6 +140,7 @@ jobs:
             test -s BananaLinux/output/rgds/target/usr/bin/openssl
             install -m 0755 BananaLinux/output/rgds/target/usr/bin/openssl component-output/usr/bin/openssl
           fi
+          if [ "$GROUP" = handheld ]; then rm -f component-output/usr/share/banana/PPSSPP/debugger/.git component-output/usr/share/banana/PPSSPP/debugger/.nojekyll; fi
           (cd component-output; find usr -type f -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS; sha256sum -c SHA256SUMS)
       - name: Save compiler cache
         if: always()
@@ -169,6 +188,7 @@ jobs:
           for bin in banana-ui bananads bananafront retroarch openssl; do
             test -s "BananaLinux/output/rgds/target/usr/bin/$bin"
             readelf -h "BananaLinux/output/rgds/target/usr/bin/$bin" | grep -q AArch64
+            chmod 0755 "BananaLinux/output/rgds/target/usr/bin/$bin"
           done
       - uses: actions/checkout@v4
         with:
