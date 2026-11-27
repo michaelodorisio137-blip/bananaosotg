@@ -1,0 +1,163 @@
+#!/usr/bin/env python3
+"""Low-rate bottom-screen reflection of an existing linear KMS scanout."""
+from pathlib import Path
+import sys
+root=Path(sys.argv[1])/"ui/src"
+def rep(rel,a,b):
+    p=root/rel;s=p.read_text()
+    if b in s:return
+    if s.count(a)!=1:raise SystemExit("reflection anchor mismatch: "+rel+" "+repr(a))
+    p.write_text(s.replace(a,b,1))
+rep("kms.h","int leasedScreen() const { return leased; }",
+    """int leasedScreen() const { return leased; }
+        // Read an existing linear scanout; no new emulator frame or GL readback.
+        bool idleReflection(uint32_t* rgba, int w, int h);""")
+rep("kms.cpp","#include <xf86drmMode.h>",r"""#include <xf86drmMode.h>
+#include <drm_fourcc.h>
+#include <linux/dma-buf.h>
+#include <sys/ioctl.h>""")
+rep("kms.cpp","\tint Display::lease(int s)",r"""
+    bool Display::idleReflection(uint32_t* out,int w,int h)
+    {
+        if(fd<0 || leased!=0 || !out || w<=0 || h<=0 || w>80 || h>60)return false;
+        uint32_t plane=primaryPlane(fd,p[0].crtc);
+        if(!plane)return false;
+        drmModePlane* pl=drmModeGetPlane(fd,plane);
+        if(!pl)return false;
+        uint32_t fbId=pl->crtc_id==p[0].crtc?pl->fb_id:0;
+        drmModeFreePlane(pl);
+        if(!fbId)return false;
+        // Do not assume tiled/AFBC layouts or rotate a non-upright plane.
+        uint64_t sx=0,sy=0,sw=0,sh=0,rot=DRM_MODE_ROTATE_0;
+        auto props=drmModeObjectGetProperties(fd,plane,DRM_MODE_OBJECT_PLANE);
+        if(!props)return false;
+        for(unsigned i=0;i<props->count_props;i++){
+            auto prop=drmModeGetProperty(fd,props->props[i]);
+            if(!prop)continue;
+            uint64_t v=props->prop_values[i];
+            if(!strcmp(prop->name,"SRC_X"))sx=v;
+            if(!strcmp(prop->name,"SRC_Y"))sy=v;
+            if(!strcmp(prop->name,"SRC_W"))sw=v;
+            if(!strcmp(prop->name,"SRC_H"))sh=v;
+            if(!strcmp(prop->name,"rotation"))rot=v;
+            drmModeFreeProperty(prop);
+        }
+        drmModeFreeObjectProperties(props);
+        if(rot!=DRM_MODE_ROTATE_0 || ((sx|sy|sw|sh)&65535))return false;
+        sx>>=16;sy>>=16;sw>>=16;sh>>=16;
+        drmModeFB2* f=drmModeGetFB2(fd,fbId);
+        if(!f)return false;
+        // GETFB2 returns new GEM handles: close every distinct handle, including on failure.
+        int dm=-1; bool ok=false;
+        void* map=MAP_FAILED; size_t bytes=0; bool syncStarted=false;
+        unsigned bpp=f->pixel_format==DRM_FORMAT_RGB565?2:
+            (f->pixel_format==DRM_FORMAT_XRGB8888 || f->pixel_format==DRM_FORMAT_ARGB8888 ||
+             f->pixel_format==DRM_FORMAT_XBGR8888 || f->pixel_format==DRM_FORMAT_ABGR8888)?4:0;
+        do {
+            if(!bpp || !f->handles[0] || f->handles[1] || f->handles[2] || f->handles[3] ||
+               ((f->flags&DRM_MODE_FB_MODIFIERS) && f->modifier!=DRM_FORMAT_MOD_LINEAR) ||
+               !sw || !sh || sx+sw>f->width || sy+sh>f->height ||
+               f->width>4096 || f->height>4096 ||
+               f->pitches[0]<(uint64_t)f->width*bpp)break;
+            uint64_t end=(uint64_t)f->offsets[0]+(uint64_t)f->pitches[0]*f->height;
+            if(!end || end>128u*1024u*1024u)break;
+            if(drmPrimeHandleToFD(fd,f->handles[0],DRM_CLOEXEC,&dm))break;
+            // Skip busy producers instead of intentionally waiting for a render fence.
+            pollfd pfd={dm,POLLIN,0};
+            if(poll(&pfd,1,0)!=1 || !(pfd.revents&POLLIN))break;
+            off_t size=lseek(dm,0,SEEK_END);
+            if(size<0 || (uint64_t)size<end)break;
+            bytes=(size_t)end;
+            map=mmap(nullptr,bytes,PROT_READ,MAP_SHARED,dm,0);
+            if(map==MAP_FAILED)break;
+            dma_buf_sync ds={DMA_BUF_SYNC_START|DMA_BUF_SYNC_READ};
+            if(ioctl(dm,DMA_BUF_IOCTL_SYNC,&ds))break;
+            syncStarted=true;
+            const uint8_t* base=(const uint8_t*)map+f->offsets[0];
+            // Four stratified samples per small pixel; vertically flipped.
+            for(int y=0;y<h;y++)for(int x=0;x<w;x++){
+                unsigned rr=0,gg=0,bb=0;
+                for(int j=0;j<2;j++)for(int i=0;i<2;i++){
+                    uint64_t px=sx+((4*x+1+2*i)*sw)/(4*w);
+                    uint64_t py=sy+sh-1-((4*y+1+2*j)*sh)/(4*h);
+                    const uint8_t* p=base+py*f->pitches[0]+px*bpp;
+                    if(bpp==2){
+                        uint16_t v;memcpy(&v,p,2);
+                        rr+=((v>>11)&31)*255/31;gg+=((v>>5)&63)*255/63;bb+=(v&31)*255/31;
+                    }else if(f->pixel_format==DRM_FORMAT_XBGR8888 || f->pixel_format==DRM_FORMAT_ABGR8888){
+                        rr+=p[0];gg+=p[1];bb+=p[2];
+                    }else{rr+=p[2];gg+=p[1];bb+=p[0];}
+                }
+                out[y*w+x]=0xff000000u|((rr/4)<<16)|((gg/4)<<8)|(bb/4);
+            }
+            ok=true;
+        }while(false);
+        if(syncStarted){dma_buf_sync ds={DMA_BUF_SYNC_END|DMA_BUF_SYNC_READ};ioctl(dm,DMA_BUF_IOCTL_SYNC,&ds);}
+        if(map!=MAP_FAILED)munmap(map,bytes);
+        if(dm>=0)::close(dm);
+        for(unsigned i=0;i<4;i++){
+            if(!f->handles[i])continue;
+            bool seen=false;for(unsigned j=0;j<i;j++)if(f->handles[j]==f->handles[i])seen=true;
+            if(!seen){drm_gem_close g={};g.handle=f->handles[i];drmIoctl(fd,DRM_IOCTL_GEM_CLOSE,&g);}
+        }
+        drmModeFreeFB2(f);
+        return ok;
+    }
+
+	int Display::lease(int s)""")
+# Single-screen game panel only; existing idle timer and explicit off mode remain authoritative.
+rep("main.cpp","bool linkSeen = false, pipeWarned = false;",r"""bool linkSeen = false, pipeWarned = false;
+        bool azReflecting=false, azWakeTouch=false;
+        double azReflectionAt=0;
+        const bool azReflectionEnabled=getConfValue(o.data+"/settings.conf","azeez_idle_reflection","on")!="off";
+        rnds::TexPtr azReflection;
+        auto azCaptureReflection=[&]() {
+            constexpr int w=40,h=30;
+            uint32_t src[w*h];
+            if(!disp.idleReflection(src,w,h))return false;
+            rnds::Bitmap b;b.w=w;b.h=h;b.px.resize(w*h*4);
+            // 3x3 low-resolution blur, with a darkening factor; backlight supplies the rest.
+            for(int y=0;y<h;y++)for(int x=0;x<w;x++){
+                unsigned r=0,g=0,bl=0;
+                for(int dy=-1;dy<=1;dy++)for(int dx=-1;dx<=1;dx++){
+                    unsigned v=src[std::max(0,std::min(h-1,y+dy))*w+std::max(0,std::min(w-1,x+dx))];
+                    r+=(v>>16)&255;g+=(v>>8)&255;bl+=v&255;
+                }
+                size_t k=(y*w+x)*4;
+                b.px[k]=r*3/45;b.px[k+1]=g*3/45;b.px[k+2]=bl*3/45;b.px[k+3]=255;
+            }
+            azReflection=be.upload(b,true);
+            return !!azReflection;
+        };""")
+rep("main.cpp","\t\t\t\tif (want && !disp.flipPending())\n\t\t\t\t{\n\t\t\t\t\tsettingsView.gameRender();",r"""                const bool azIdle=azReflectionEnabled && panelScreen==1 && bottomIdle.dimmed && bottomIdle.percent>0;
+                if(azIdle && t>=azReflectionAt && !disp.flipPending()){
+                    bool captured=azCaptureReflection();
+                    azReflectionAt=t+(captured?200:1500);
+                    if(captured){azReflecting=true;want=true;}
+                    else if(azReflecting){azReflecting=false;azReflection.reset();want=true;}
+                }
+                if(!azIdle){
+                    if(azReflecting){azReflecting=false;azReflection.reset();want=true;}
+                    azReflectionAt=0;
+                }
+				if (want && !disp.flipPending())
+				{
+                    if(azReflecting && azReflection){
+                        be.beginScreen(panelScreen);
+                        be.draw(azReflection,0,0,disp.width(),disp.height(),rnds::Color(1,1,1,1));
+                        be.endScreen();
+                    }else settingsView.gameRender();""")
+rep("main.cpp","if (settingsView.gameButton(ev.code, nowMs())) want = true;",
+    """if (settingsView.gameButton(ev.code, nowMs())) { bottomIdle.activity(nowMs()); want = true; }""")
+rep("main.cpp","\t\t\t\t\t\tbottomIdle.activity(nowMs());\n\t\t\t\t\t\tSettings::GameAction a;",r"""                        // First touch wakes the reflection without activating a hidden menu tile.
+                        if(azReflecting && ev.type==InputEvent::TOUCH_DOWN){
+                            azWakeTouch=true;bottomIdle.activity(nowMs());want=true;return;
+                        }
+                        if(azWakeTouch && ev.type==InputEvent::TOUCH_UP){
+                            azWakeTouch=false;bottomIdle.activity(nowMs());want=true;return;
+                        }
+						bottomIdle.activity(nowMs());
+						Settings::GameAction a;""")
+rep("main.cpp","\t\t\t\t\t\t\tsettingsView.gameTouchMove(ev.x, ev.y);",
+    "\t\t\t\t\t\t\tif(!azWakeTouch) settingsView.gameTouchMove(ev.x, ev.y);")
+print("Idle reflection integrated: 5 Hz, linear scanout only, no emulator modification.")
