@@ -18,10 +18,11 @@ if sys.argv[1]=="--ui":
         '''add(PS, "picture", "Native integer mode", "Use whole native pixels across supported emulators. Expanded renderers show real extra background where available; unsupported modes may retain borders.",
                 menu, "azeez_native_integer", { "Off", "On" }, { "off", "on" });
             items.back().hints = { "Keep each emulator's existing display settings.", "Sharp square pixels; no fractional zoom." };
+            add(PS, "picture", "GBA HD affine backgrounds", "Render rotating and scaling GBA backgrounds at 2x sample density while preserving native sprites and text.", menu, "azeez_gba_hd_affine", { "On", "Off" }, { "on", "off" });
             add(PS, "picture", "Integer scaling",''')
     replace("ui/src/settings_defaults.cpp",
         '{ "ra_border", "off", ENUM, ON_OFF, 0, 0, true },',
-        '{ "ra_border", "off", ENUM, ON_OFF, 0, 0, true },\n\t\t\t{ "azeez_native_integer", "off", ENUM, ON_OFF, 0, 0, true },')
+        '{ "ra_border", "off", ENUM, ON_OFF, 0, 0, true },\n\t\t\t{ "azeez_native_integer", "off", ENUM, ON_OFF, 0, 0, true },\n\t\t\t{ "azeez_gba_hd_affine", "on", ENUM, ON_OFF, 0, 0, true },')
     sys.exit(0)
 
 base="usr/libexec/banana/"
@@ -34,6 +35,7 @@ for launcher in (ra,bf):
     marker='CFG=/data/retroarch/retroarch.cfg'
     replace(launcher,marker,'''if [ "$(setting azeez_native_integer)" = on ]; then
     export AZEEZ_EXPANDED_VIEWPORT=1
+    export AZEEZ_GBA_HD_AFFINE="$(setting azeez_gba_hd_affine)"
     case "$BANANA_SYSTEM" in
         nes) VCORE=fceumm ;;
         megadrive) VCORE=genesis_plus_gx_wide ;;
