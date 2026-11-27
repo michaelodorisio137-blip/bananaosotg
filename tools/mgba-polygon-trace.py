@@ -112,8 +112,8 @@ static void azTraceTick(void) {
     if(azTraceFrame>=3600 || (azTraceCount[0]>=128 && azTraceCount[1]>=128 && azTraceCount[2]>=128 && !azDepth))azTraceStop();
 }
 """)
-# Apply BEFORE the GLES bridge, whose source anchors include these lines.
-rep(p,"\tcore->loadROM(core, rom);\n\tdeferredSetup = true;","\tcore->loadROM(core, rom);\n\tdeferredSetup = true;\n\tazTraceStart();")
+# Apply AFTER the GLES bridge or integer viewport patch.
+rep(p,"\tcore->loadROM(core, rom);","\tcore->loadROM(core, rom);\n\tazTraceStart();")
 rep(p,"\tcore->runFrame(core);","\tcore->runFrame(core);\n\tazTraceTick();")
 rep(p,"void retro_unload_game(void) {\n","void retro_unload_game(void) {\n\tazTraceStop();\n")
 print("Live read-only CRIS candidate trace installed; normal rendering unchanged.")
