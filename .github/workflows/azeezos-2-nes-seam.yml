@@ -1,0 +1,92 @@
+name: NES exterior scanline repair
+on:
+  workflow_dispatch:
+  push:
+    branches: [azeezos-2.0]
+    paths:
+      - 'tools/azeezos-2-expanded-source.py'
+      - '.github/workflows/azeezos-2-nes-seam.yml'
+permissions:
+  contents: read
+concurrency:
+  group: azeezos-nes-seam
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      BR2_DL_DIR: ${{ github.workspace }}/dl
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: libretro/libretro-fceumm
+          ref: 7a542dab1e87679921962a9f056186eca425c0c2
+          path: fceumm-host
+          persist-credentials: false
+      - name: Compile patched native core and test PPU address arithmetic
+        run: |
+          python3 tools/azeezos-2-expanded-source.py nes fceumm-host
+          python3 - <<'PY'
+          from pathlib import Path
+          import re, subprocess, tempfile
+          s=Path("fceumm-host/src/ppu.c").read_text()
+          fn=re.search(r"static unsigned azeez_nes_rewind_x\([^}]+}",s).group()
+          with tempfile.TemporaryDirectory() as d:
+              p=Path(d)/"test.c"
+              p.write_text("#include <assert.h>\n"+fn+"""
+          int main(void) {
+            for(unsigned v=0;v<32768;v++) {
+              unsigned a=v;
+              for(int i=0;i<34;i++) a=(a&31)==31?a^0x41f:a+1;
+              unsigned want=v^0x400;
+              assert(azeez_nes_rewind_x(a,2)==want);
+            }
+            return 0;
+          }
+          """)
+              subprocess.run(["cc",str(p),"-o",d+"/test"],check=True)
+              subprocess.run([d+"/test"],check=True)
+          PY
+          make -C fceumm-host -f Makefile.libretro platform=unix -j4
+      - uses: actions/checkout@v4
+        with:
+          repository: JorreFog/BananaLinux
+          ref: 54123092f4cb8195d01b82ad12c880d35de059d0
+          path: BananaLinux
+          persist-credentials: false
+      - name: Install cross-build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y build-essential bc bison flex libssl-dev libelf-dev unzip rsync cpio file wget python3-dev swig libgnutls28-dev squashfs-tools cmake libdrm-dev libasound2-dev libfreetype-dev zlib1g-dev
+      - uses: actions/cache/restore@v4
+        with:
+          path: dl
+          key: rgds-dl-v2-${{ github.sha }}
+          restore-keys: rgds-dl-v2-
+      - uses: actions/cache/restore@v4
+        with:
+          path: ~/.buildroot-ccache
+          key: rgds-ccache-v2-${{ github.sha }}
+          restore-keys: rgds-ccache-v2-
+      - name: Cross-build only NES core
+        run: |
+          pkg=BananaLinux/buildroot/package/libretro-fceumm
+          cp tools/azeezos-2-expanded-source.py "$pkg/"
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path("BananaLinux/buildroot/package/libretro-fceumm/libretro-fceumm.mk")
+          s=p.read_text()
+          a="define LIBRETRO_FCEUMM_BUILD_CMDS"
+          assert s.count(a)==1
+          p.write_text(s.replace(a,a+"\n\tpython3 $(BR2_EXTERNAL_BANANA_PATH)/package/libretro-fceumm/azeezos-2-expanded-source.py nes $(@D)"))
+          PY
+          bash tools/azeezos-2-build-components.sh nes
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NES-exterior-seam-RGDS
+          path: component-output/
+          if-no-files-found: error
