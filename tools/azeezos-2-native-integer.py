@@ -119,7 +119,7 @@ replace(bd,'cd $D\nexec /usr/bin/bananads "$ROM"',
     # Expanded 3D camera is optional; native 3D is the fast default.
     az_ds_setting() {
         for f in /data/banana/settings.conf /etc/banana/settings.conf; do
-            v=$(sed -n "/^ *$1 *= */{s///;h};\\\${x;p}" "$f" 2>/dev/null)
+            v=$(awk -v k="$1" '$0 ~ ("^ *" k " *= *") {sub(/^[^=]*= */,""); v=$0} END {print v}' "$f" 2>/dev/null)
             if [ -n "$v" ]; then printf '%s' "$v"; return; fi
         done
     }
