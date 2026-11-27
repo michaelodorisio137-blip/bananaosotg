@@ -1,0 +1,58 @@
+name: Publish verified AzeezOS 2.0 OTA preview
+on:
+  push:
+    branches: [azeezos-2.0]
+    paths: ['.github/workflows/publish-azeezos-2-ota.yml']
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: write
+concurrency:
+  group: azeezos-2-ota-publish
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: michaelodorisio137-blip/bananaosotg
+      RUN: '45952890809'
+      SOURCE: 2619bbc04a66c0f23364959c2b4832c10f5877a1
+      VERSION: 2.0.0-dev.45952890809
+    steps:
+      - name: Download the exact successful firmware and verify checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api "repos/$GH_REPO/actions/runs/$RUN" --jq '.conclusion + " " + .head_sha' | grep -Fx "success $SOURCE"
+          mkdir -p out original
+          gh run download "$RUN" -n AzeezOS-2.0-Dev-Preview -D out
+          FILE="banana-rgds-$VERSION.update.tar"
+          (cd out; test -s "$FILE"; sha256sum -c SHA256SUMS-rgds.txt; grep -Eq "^[0-9a-f]{64}  $FILE$" SHA256SUMS-rgds.txt)
+          tar -xf "out/$FILE" -C original
+          mapfile -t roots < <(find original -type f -name rootfs.squashfs)
+          test "${#roots[@]}" -eq 1
+          dir=$(dirname "${roots[0]}")
+          test "$(cat "$dir/board")" = rgds
+          test "$(cat "$dir/VERSION")" = "$VERSION"
+          (cd "$dir"; sha256sum -c sha256sums)
+          sudo apt-get update -qq
+          sudo apt-get install -y squashfs-tools
+          test "$(unsquashfs -cat "$dir/rootfs.squashfs" etc/banana/version)" = "$VERSION"
+      - name: Publish unchanged firmware to GitHub OTA feed as a test release
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE="banana-rgds-$VERSION.update.tar"
+          TAG="v$VERSION"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" "out/$FILE" out/SHA256SUMS-rgds.txt --target "$SOURCE" --title "AzeezOS RG DS 2.0 Development Preview" --notes "All five component groups and firmware packaging passed CI. Development preview; physical RG DS testing is still pending. Keep the previous firmware slot available for rollback." --prerelease --draft
+          fi
+          mkdir verify
+          gh release download "$TAG" --pattern "$FILE" --pattern SHA256SUMS-rgds.txt --dir verify
+          cmp "out/$FILE" "verify/$FILE"
+          cmp out/SHA256SUMS-rgds.txt verify/SHA256SUMS-rgds.txt
+          (cd verify; sha256sum -c SHA256SUMS-rgds.txt)
+          gh release edit "$TAG" --draft=false --prerelease
+          gh release view "$TAG" --json tagName,isDraft,isPrerelease,assets,url
