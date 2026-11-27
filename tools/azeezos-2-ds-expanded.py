@@ -20,13 +20,13 @@ private:
     void ResetVRAMCache() noexcept;""")
 rep("bananads/src/emu.h","    const uint32_t* bottom() const;",
     """    const uint32_t* bottom() const;
-    const uint32_t* expanded_screen(bool bottom) const;""")
+    const uint32_t* expanded_screen(bool bottom, uint32_t* dest=nullptr, int pitch=640) const;""")
 rep("bananads/src/emu.cpp",'    const long scale_cfg = cfg_.num("render.scale", 1);',
     '''    const long configured_scale = cfg_.num("render.scale", 1);
     const long scale_cfg = getenv("AZEEZ_EXPANDED_VIEWPORT") && configured_scale > 2 ? 2 : configured_scale;''')
 rep("bananads/src/emu.cpp","void Emu::set_audio_rate(double hz) {",r"""
 // Read-only exterior tilemap sampling. Native LCD composition is untouched.
-const uint32_t* Emu::expanded_screen(bool bottom_screen) const {
+const uint32_t* Emu::expanded_screen(bool bottom_screen, uint32_t* dest, int pitch) const {
     static thread_local uint32_t frame[2][640*480];
     auto& gpu=nds_->GPU;
     auto& bg=(bottom_screen != gpu.ScreenSwap) ? gpu.GPU2D_A : gpu.GPU2D_B;
@@ -91,17 +91,29 @@ const uint32_t* Emu::expanded_screen(bool bottom_screen) const {
         }
         return rgb(c);
     };
-    auto* out=frame[bottom_screen?1:0];
-    for(int y=0;y<240;y++) for(int x=0;x<320;x++) {
-        if(x>=32 && x<288 && y>=24 && y<216 && src) {
-            for(int j=0;j<2;j++) for(int i=0;i<2;i++) {
-                int sx=((x-32)*2+i)*sc/2, sy=((y-24)*2+j)*sc/2;
-                out[(y*2+j)*640+x*2+i]=src[sy*256*sc+sx];
+    auto* out=dest?dest:frame[bottom_screen?1:0];
+    if(!dest) pitch=640;
+    for(int y=0;y<240;y++) {
+        uint32_t* a=out+y*2*pitch;
+        uint32_t* b=a+pitch;
+        bool center=y>=24 && y<216 && src;
+        if(center) {
+            if(sc==2) {
+                memcpy(a+64,src+(y-24)*2*512,512*sizeof(uint32_t));
+                memcpy(b+64,src+((y-24)*2+1)*512,512*sizeof(uint32_t));
+            } else {
+                const uint32_t* row=src+(y-24)*256;
+                for(int i=0;i<256;i++) a[64+i*2]=a[65+i*2]=row[i];
+                memcpy(b+64,a+64,512*sizeof(uint32_t));
             }
-        } else {
-            uint32_t p=sample(x-32,y-24);
-            out[y*1280+x*2]=out[y*1280+x*2+1]=
-            out[y*1280+640+x*2]=out[y*1280+640+x*2+1]=p;
+        }
+        for(int span=0;span<(center?2:1);span++) {
+            int first=center && span?288:0;
+            int last=center && !span?32:320;
+            for(int i=first;i<last;i++) {
+                uint32_t p=sample(i-32,y-24);
+                a[i*2]=a[i*2+1]=b[i*2]=b[i*2+1]=p;
+            }
         }
     }
     return out;
@@ -125,11 +137,9 @@ rep(p,"        std::string want;\n        bool asked = false;",
         std::string want;
         bool asked = false;""")
 rep(p,"if (!dp.direct) dp.write(s, emu.top(), emu.bottom());",
-    """if (!dp.direct) dp.write(s, dp.az_expanded ? emu.expanded_screen(false) : emu.top(),
-                                                        dp.az_expanded ? emu.expanded_screen(true) : emu.bottom());""")
+    """if (!dp.direct) dp.write_game(s, emu);""")
 rep(p,"if (!shown_ahead) dp.write(s, emu.top(), emu.bottom());",
-    """if (!shown_ahead) dp.write(s, dp.az_expanded ? emu.expanded_screen(false) : emu.top(),
-                                                               dp.az_expanded ? emu.expanded_screen(true) : emu.bottom());""")
+    """if (!shown_ahead) dp.write_game(s, emu);""")
 rep(p,"                                int tx = std::clamp((int)((px - rx) * 256 / rw), 0, 255);",
     """                                if (dp.az_expanded) {
                                     rx=64; ry=48; rw=512; rh=384;
@@ -139,3 +149,15 @@ rep(p,"                                int tx = std::clamp((int)((px - rx) * 256
                                 }
                                 int tx = std::clamp((int)((px - rx) * 256 / rw), 0, 255);""")
 print("DS centered expanded viewport source integrated")
+
+rep("bananads/src/frontend_kms.cpp","    void write(int s, const uint32_t* top, const uint32_t* bot) {",'''    void write_game(int s, Emu& emu) {
+        if(!az_expanded) { write(s,emu.top(),emu.bottom()); return; }
+        if(!hw) { write(s,emu.expanded_screen(false),emu.expanded_screen(true)); return; }
+        for(int i=0;i<2;i++) {
+            Buf& b=buf[i][s];
+            if(touched) touched(b.map);
+            emu.expanded_screen(i!=0,(uint32_t*)b.map,(int)b.pitch/4);
+        }
+    }
+    void write(int s, const uint32_t* top, const uint32_t* bot) {''')
+print("DS: row copies, exterior-only sampling, one KMS write instead of two")
