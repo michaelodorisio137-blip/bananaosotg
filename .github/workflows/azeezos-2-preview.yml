@@ -7,6 +7,7 @@ on:
       - '.github/workflows/azeezos-2-preview.yml'
       - 'tools/next-n64-integration.py'
       - 'tools/azeezos-2-build-components.sh'
+      - 'tools/azeezos-2-psp.py'
   workflow_call:
     inputs:
       proposed_feature:
@@ -99,6 +100,14 @@ jobs:
           PROPOSED: ${{ inputs.proposed_feature }}
         run: |
           set -eu
+          PREVIOUS=2d9a345a709008cd3f4cf6ff59c9230d57397d00
+          if [ "$GROUP" != handheld ] && [ "$PROPOSED" != true ] && git cat-file -e "$PREVIOUS^{commit}" && git diff --quiet "$PREVIOUS" HEAD -- . ':!.github/workflows/azeezos-2-preview.yml' ':!tools/azeezos-2-psp.py'; then
+            if gh run download 45943156056 -R "$GITHUB_REPOSITORY" -n "preview-binaries-$GROUP" -D component-output && test "$(cat component-output/SOURCE-COMMIT)" = "$PREVIOUS" && test -s component-output/SHA256SUMS && (cd component-output && sha256sum -c SHA256SUMS); then
+              echo "Reusing checksum-verified $GROUP binaries from unchanged component sources"
+              exit 0
+            fi
+            rm -rf component-output
+          fi
           OLD=7103b38087f59a8d66ebc4f269505f260c70091e
           if [ "$GROUP" = ds-ui ] && [ "$PROPOSED" != true ] && git cat-file -e "$OLD^{commit}" && git diff --quiet "$OLD" HEAD -- . ':!.github/workflows/azeezos-2-preview.yml'; then
             if gh run download 45940330914 -R "$GITHUB_REPOSITORY" -n AzeezOS-Component-Binaries-45940330914 -D component-output && test "$(cat component-output/SOURCE-COMMIT)" = "$OLD" && (cd component-output && sha256sum -c SHA256SUMS) && test -s component-output/usr/bin/banana-ui && test -s component-output/usr/bin/bananads; then
