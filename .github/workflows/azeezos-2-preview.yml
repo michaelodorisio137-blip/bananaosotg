@@ -5,6 +5,8 @@ on:
     branches: [azeezos-2.0]
     paths:
       - '.github/workflows/azeezos-2-preview.yml'
+      - 'tools/next-n64-integration.py'
+      - 'tools/azeezos-2-build-components.sh'
   workflow_call:
     inputs:
       proposed_feature:
