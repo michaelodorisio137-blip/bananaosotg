@@ -15,6 +15,10 @@ if mode=="--source":
     rep("libretro/Makefile.common",
         "COREFLAGS += -DVK_USE_PLATFORM_XLIB_KHR",
         "# AzeezOS: no Xlib surface extensions on DRM/EGL")
+    # Adreno custom driver loading is Android-only, not generic ARM64 Linux.
+    rep("libretro/Makefile.common",
+        "ifeq ($(TARGET_ARCH),arm64)\nSOURCES_CXX += \\\n\t  $(EXTDIR)/libadrenotools/src/driver.cpp",
+        "ifeq ($(TARGET_ARCH)-$(PLATFORM_EXT),arm64-android)\nSOURCES_CXX += \\\n\t  $(EXTDIR)/libadrenotools/src/driver.cpp")
     p="libretro/libretro.cpp"
     rep(p,'info->library_name     = "PPSSPP";','info->library_name     = "PPSSPP Azeez 4:3";')
     rep(p,'   retro_base_dir /= "PPSSPP";','''   retro_base_dir /= "PPSSPP";
