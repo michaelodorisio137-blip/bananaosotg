@@ -129,8 +129,7 @@ const uint32_t* Emu::expanded_screen(bool bottom_screen, uint32_t* dest, int pit
                 memcpy(b+64,src+((y-24)*2+1)*512,512*sizeof(uint32_t));
             } else {
                 const uint32_t* row=src+(y-24)*256;
-                for(int i=0;i<256;i++) a[64+i*2]=a[65+i*2]=row[i];
-                memcpy(b+64,a+64,512*sizeof(uint32_t));
+                for(int i=0;i<256;i++) a[64+i*2]=a[65+i*2]=b[64+i*2]=b[65+i*2]=row[i];
             }
         }
         for(int span=0;span<(center?2:1);span++) {
@@ -202,7 +201,6 @@ rep("melonds/src/GPU3D.cpp","    // clipping\n",'''    // Widen full-screen proj
     }
     // clipping
 ''')
-rep("melonds/src/GPU3D.cpp","if (GeomReject && PolygonClippedAway())","if (!getenv(\"AZEEZ_DS_WIDE3D\") && GeomReject && PolygonClippedAway())")
 rep("bananads/src/gengis_renderer.h","    int Scale() const { return Scale_; }",'''    int Scale() const { return Scale_; }
     const uint32_t* ExpandedFrame(int& scale) const {
         scale=Scale_;
