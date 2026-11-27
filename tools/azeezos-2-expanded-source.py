@@ -103,7 +103,8 @@ elif kind=="n64":
           retro_screen_height = 240;
           retro_screen_aspect = 4.0 / 3.0;
           AspectRatio = 1;
-          EnableNativeResFactor = 1;
+          /* Keep the existing GLideN64 native-resolution factor.
+           * Fixed 320x240 output does not require overriding this option. */
        }
        // If we use Angrylion, we force 640x480""")
 elif kind=="psx":
