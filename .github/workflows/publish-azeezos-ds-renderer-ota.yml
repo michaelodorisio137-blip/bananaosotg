@@ -32,7 +32,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git diff --exit-code "$BUILD_SHA" HEAD -- tools
+          git diff --exit-code "$BUILD_SHA" HEAD -- tools ':!tools/gpu-launch-session.py'
           git diff --exit-code "$VALIDATION_SHA" "$BUILD_SHA" -- tools/azeezos-2-ds-expanded.py tools/azeezos-2-bananads-filter.py
           git diff --name-only "$BASE_SHA" "$BUILD_SHA" -- tools | sort > /tmp/actual-diff
           printf '%s\n' tools/azeezos-2-ds-expanded.py tools/azeezos-2-native-integer.py | sort > /tmp/expected-diff
@@ -58,7 +58,7 @@ jobs:
           test "$(cat "$dir/VERSION")" = "$BASE_VERSION"
           (cd "$dir"; sha256sum -c sha256sums)
           printf '%s\n' "$dir" > /tmp/ota-dir
-      - name: Install the DS renderer and matching UI without changing other emulators
+      - name: Preserve the DS renderer and repair Saturn and PSP GPU launch sessions
         shell: bash
         run: |
           set -euo pipefail
@@ -69,6 +69,18 @@ jobs:
           test "$(cat rootfs/etc/banana/version)" = "$BASE_VERSION"
           install -m 0755 components/usr/bin/bananads rootfs/usr/bin/bananads
           install -m 0755 components/usr/bin/banana-ui rootfs/usr/bin/banana-ui
+          python3 tools/gpu-launch-session.py rootfs
+          for core in yabasanshiro ppsspp_azeez; do
+            binary="rootfs/usr/lib/libretro/${core}_libretro.so"
+            readelf -h "$binary" | grep -q AArch64
+            while IFS= read -r needed; do
+              if ! find rootfs/lib rootfs/usr/lib -name "$needed" -print -quit | grep -q .; then
+                echo "Missing runtime library: $core -> $needed" >&2
+                exit 1
+              fi
+            done < <(readelf -d "$binary" | sed -n 's/.*Shared library: \[\(.*\)\]/\1/p')
+          done
+          test -s rootfs/usr/share/banana/PPSSPP/compat.ini
           sh -n rootfs/usr/libexec/banana/run-bananads
           cmp components/usr/bin/bananads rootfs/usr/bin/bananads
           cmp components/usr/bin/banana-ui rootfs/usr/bin/banana-ui
@@ -103,7 +115,7 @@ jobs:
           FILE="banana-rgds-$VERSION.update.tar"
           TAG="v$VERSION"
           if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" "out/$FILE" out/SHA256SUMS-rgds.txt --target "$GITHUB_SHA" --title "AzeezOS RG DS 2.0 DS renderer preview" --notes "Adds selectable native 320x240 and HD 640x480 expanded DS 3D rasters, with 2x integer 2D presentation and selectable texture filtering. Native mode defaults to 320x240. Renderer and UI cross-compiled successfully; hardware performance and visual correctness remain unverified. Prior OTA and unrelated emulators preserved." --prerelease --draft
+            gh release create "$TAG" "out/$FILE" out/SHA256SUMS-rgds.txt --target "$GITHUB_SHA" --title "AzeezOS RG DS 2.0 GPU launch repair preview" --notes "Preserves the existing DS renderer and all emulator binaries; isolates Saturn and PSP hardware launch sessions from shared CRT, scaling, and frontend settings. Checks packaged cores, runtime library names and PSP assets. Physical hardware launch and performance remain unverified. Prior OTA preserved." --prerelease --draft
           fi
           mkdir -p verify
           gh release download "$TAG" --pattern "$FILE" --pattern SHA256SUMS-rgds.txt --dir verify
