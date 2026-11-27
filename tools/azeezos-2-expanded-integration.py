@@ -68,3 +68,5 @@ subprocess.run([sys.executable, str(Path(__file__).with_name('azeezos-2-saturn.p
 subprocess.run([sys.executable, str(Path(__file__).with_name('azeezos-2-max-performance.py')), str(root/'system/rootfs')], check=True)
 
 subprocess.run([sys.executable, str(Path(__file__).with_name('azeezos-2-snes-fast.py')), '--build', str(root)], check=True)
+
+subprocess.run([sys.executable, str(Path(__file__).with_name('azeezos-2-cover-background.py')), str(root)], check=True)
