@@ -1,5 +1,6 @@
 name: Experimental mGBA GLES3 RG DS core
 on:
+  workflow_call:
   workflow_dispatch:
   push:
     branches: [azeezos-2.0]
@@ -10,7 +11,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: mgba-gles-preview
+  group: mgba-gles-preview-${{ github.workflow }}
   cancel-in-progress: true
 jobs:
   build:
