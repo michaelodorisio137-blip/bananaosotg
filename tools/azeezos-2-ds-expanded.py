@@ -65,7 +65,7 @@ const uint32_t* Emu::expanded_screen(bool bottom_screen, uint32_t* dest, int pit
         layers[layer_count++]={i,bc,((bc&0x1f00)<<3)+(bg.Num?0:((dc&0x38000000)>>11)),
             ((bc&0x003c)<<12)+(bg.Num?0:((dc&0x07000000)>>8))};
     }
-    auto sample=[&](int x,int y,unsigned,unsigned)->uint32_t {
+    auto sample=[&](int x,int y,unsigned dx,unsigned dy)->uint32_t {
         unsigned c=backdrop;
         if (blank) return 0xffffffffu;
         for(unsigned k=0;k<layer_count;++k) {
@@ -73,10 +73,12 @@ const uint32_t* Emu::expanded_screen(bool bottom_screen, uint32_t* dest, int pit
             const int i=layer.i;
             const unsigned bc=layer.bc;
             if(i==0 && !bg.Num && (dc&8) && scene) {
-                // Native expanded raster: one sample per logical pixel.
-                unsigned sx=(unsigned)(x+32), sy=(unsigned)(y+24);
+                // Native and HD expanded rasters share the same camera.
+                // HD is stored in quarter rows: each row's even pixels, then odd.
+                const unsigned sx=(unsigned)(x+32), sy=(unsigned)(y+24);
                 if(sx<320 && sy<240) {
-                    uint32_t p=scene[sy*320+sx];
+                    const unsigned idx=sc3==2 ? (sy*2+dy)*640+dx*320+sx : sy*320+sx;
+                    uint32_t p=scene[idx];
                     unsigned a=(p>>24)&31;
                     if(a) {
                         unsigned r=((p&63)>>1), g=(((p>>8)&63)>>1), b=(((p>>16)&63)>>1);
@@ -145,8 +147,15 @@ const uint32_t* Emu::expanded_screen(bool bottom_screen, uint32_t* dest, int pit
             int first=center && span?288:0;
             int last=center && !span?32:320;
             for(int i=first;i<last;i++) {
-                uint32_t p=sample(i-32,y-24,0,0);
-                a[i*2]=a[i*2+1]=b[i*2]=b[i*2+1]=p;
+                    if(scene && sc3==2) {
+                    a[i*2]=sample(i-32,y-24,0,0);
+                    a[i*2+1]=sample(i-32,y-24,1,0);
+                    b[i*2]=sample(i-32,y-24,0,1);
+                    b[i*2+1]=sample(i-32,y-24,1,1);
+                } else {
+                    const uint32_t p=sample(i-32,y-24,0,0);
+                    a[i*2]=a[i*2+1]=b[i*2]=b[i*2+1]=p;
+                }
             }
         }
     }
@@ -226,7 +235,7 @@ rep("bananads/src/gengis_renderer.h","    void SetRenderSettings(melonDS::Render
         return static_cast<GengisRenderer3D*>(this->Rend3D.get())->ExpandedFrame(scale);
     }
     void SetRenderSettings(melonDS::RendererSettings&) override {}''')
-rep("bananads/src/gengis_renderer.cpp","    gx_zva = Zva;",'''    Wide3D=getenv("AZEEZ_DS_WIDE3D")!=nullptr && Scale_==1;
+rep("bananads/src/gengis_renderer.cpp","    gx_zva = Zva;",'''    Wide3D=getenv("AZEEZ_DS_WIDE3D")!=nullptr && Scale_<=2;
     gx_zva = Zva;''')
 rep("bananads/src/gengis_renderer.cpp","    WaitAll();  // the last frame's bins read VRAM and the polygons: done before either changes",'''    WaitAll();  // the last frame's bins read VRAM and the polygons: done before either changes
     if(Wide3D) Presented=Out;''')
@@ -236,19 +245,25 @@ rep("bananads/src/gengis_renderer.cpp","    Textures.clear();\n    Stale.clear()
 # Dedicated raster variant: separate thread-local scratch, shared tables.
 rep("bananads/gengis/gx.h","void gx_render_bin(const gx_frame *f, unsigned bin, uint32_t *out);",
     """void gx_render_bin(const gx_frame *f, unsigned bin, uint32_t *out);
-void gxwide_render_bin(const gx_frame *f, unsigned bin, uint32_t *out);""")
+void gxwide_render_bin(const gx_frame *f, unsigned bin, uint32_t *out);
+void gxwide2_render_bin(const gx_frame *f, unsigned bin, uint32_t *out);""")
 rep("bananads/gengis/gx.c","#define GX_W (256 * GX_SCALE)\n#define GX_H (192 * GX_SCALE)",
     """#ifdef GX_NATIVE_WIDE
-#define GX_W 320
-#define GX_H 240
+#define GX_W (320 * GX_SCALE)
+#define GX_H (240 * GX_SCALE)
+#undef gx_render_bin
+#if GX_SCALE == 2
+#define gx_render_bin gxwide2_render_bin
+#else
 #define gx_render_bin gxwide_render_bin
+#endif
 #else
 #define GX_W (256 * GX_SCALE)
 #define GX_H (192 * GX_SCALE)
 #endif""")
 rep("bananads/gengis/gx.c",'_Static_assert(GX_H / GX_BL == (192 / 16) * GX_SUB, "the bins");',
     '''#ifdef GX_NATIVE_WIDE
-_Static_assert(GX_H / GX_BL == 15 && GX_W == 320 && GX_SUB == 1, "native wide bins");
+_Static_assert(GX_H / GX_BL == 15 && GX_W == 320*GX_SCALE && GX_SUB == 1, "expanded bins");
 #else
 _Static_assert(GX_H / GX_BL == (192 / 16) * GX_SUB, "the bins");
 #endif''')
@@ -257,20 +272,21 @@ for marker in ("uintptr_t ds_base;", "uint8_t *gx_sys, *gx_geom;", "int gx_lazy;
         "#if GX_SCALE == 1 && !defined(GX_NATIVE_WIDE)\n"+marker)
 rep("bananads/gengis/gx.c","const unsigned row = ((unsigned)(yl / GX_SCALE + f->rear_y) & 0xff) << 8;",
     """#ifdef GX_NATIVE_WIDE
-        const unsigned row = ((unsigned)(yl - 24 + f->rear_y) & 0xff) << 8;
+        const unsigned row = ((unsigned)(yl / GX_SCALE - 24 + f->rear_y) & 0xff) << 8;
 #else
         const unsigned row = ((unsigned)(yl / GX_SCALE + f->rear_y) & 0xff) << 8;
 #endif""")
 rep("bananads/gengis/gx.c","const unsigned ix = row + ((f->rear_x + i / GX_SCALE) & 0xff);",
     """#ifdef GX_NATIVE_WIDE
-            const unsigned ix = row + ((f->rear_x + i - 32) & 0xff);
+            const unsigned ix = row + ((f->rear_x + i / GX_SCALE - 32) & 0xff);
 #else
             const unsigned ix = row + ((f->rear_x + i / GX_SCALE) & 0xff);
 #endif""")
 wide=root/"bananads/gengis/gxwide.c"
 wide.write_text('#define GX_NATIVE_WIDE 1\n#include "gx.c"\n')
+(root/"bananads/gengis/gxwide2.c").write_text('#define GX_NATIVE_WIDE 1\n#define GX_SCALE 2\n#include "gx.c"\n')
 rep("bananads/CMakeLists.txt","add_library(gengis STATIC ${GX}/gx.c",
-    "add_library(gengis STATIC ${GX}/gxwide.c ${GX}/gx.c")
+    "add_library(gengis STATIC ${GX}/gxwide.c ${GX}/gxwide2.c ${GX}/gx.c")
 # Keep the game's viewport registers untouched. Map clip-space to expanded raster.
 rep("melonds/src/GPU3D.cpp","            vtx->HiresPosition[0] = posX & 0x1FFF;\n            vtx->HiresPosition[1] = posY & 0xFFF;",
     """            if (azWide) {
@@ -290,8 +306,10 @@ rep("melonds/src/GPU3D.cpp","            vtx->HiresPosition[0] = posX & 0x1FFF;\
 # Expanded mode uses 1x the new canvas, not conventional supersampling.
 rep("bananads/src/emu.cpp","    const int scale = scale_cfg >= 2 && scale_cfg <= 4 ? (int)scale_cfg : 1;",
     """    const bool native_wide = getenv("AZEEZ_DS_WIDE3D") != nullptr;
-    const int scale = native_wide ? 1 : (scale_cfg >= 2 && scale_cfg <= 4 ? (int)scale_cfg : 1);
-    if (native_wide) Log(LogLevel::Info, "[azeez] native expanded 3D: 320x240, no supersampling\\n");""")
+    const int scale = native_wide ? (banana2d && cfg_.num("render.expanded_scale",1)==2 ? 2 : 1) : (scale_cfg >= 2 && scale_cfg <= 4 ? (int)scale_cfg : 1);
+    if (native_wide) Log(LogLevel::Info, "[azeez] expanded 3D raster: %dx%d\\n",320*scale,240*scale);""")
+rep("bananads/src/emu.cpp",'    const bool banana2d = cfg_.str("render.2d", "banana") == "banana";',
+    '    const bool banana2d = getenv("AZEEZ_DS_WIDE3D") != nullptr || cfg_.str("render.2d", "banana") == "banana";')
 rep("bananads/src/emu.cpp",'    if (cfg_.str("render.renderer", "gengis") == "gengis") {',
     '    if (native_wide || cfg_.str("render.renderer", "gengis") == "gengis") {')
 h="bananads/src/gengis_renderer.h"
@@ -301,11 +319,11 @@ rep(h,"    std::vector<uint8_t> BinKey[GX_NBINS], NewKey[GX_NBINS];\n    bool Bi
     bool BinReuse[15] = {};""")
 rep(h,"    size_t OutWords() const { return (size_t)GX_H * GX_W * Scale_ * Scale_; }",
     """    unsigned BinCount() const { return Wide3D ? 15 : GX_NBINS; }
-    size_t UnitWords() const { return Wide3D ? 320*16 : (size_t)GX_BL*GX_W*Scale_*Scale_/Sub; }
-    size_t OutWords() const { return Wide3D ? 320*240 : (size_t)GX_H*GX_W*Scale_*Scale_; }""")
+    size_t UnitWords() const { return Wide3D ? (size_t)320*16*Scale_*Scale_ : (size_t)GX_BL*GX_W*Scale_*Scale_/Sub; }
+    size_t OutWords() const { return Wide3D ? (size_t)320*240*Scale_*Scale_ : (size_t)GX_H*GX_W*Scale_*Scale_; }""")
 rep(h,"        if (line >= GX_H) line = GX_H - 1;\n        if (Scale_ >= 3)",
     """        if (line >= GX_H) line = GX_H - 1;
-        if (Wide3D) return Out + (line+24)*320+32;
+        if (Wide3D) return Out + ((line+24)*Scale_+q/Scale_)*320*Scale_+(q%Scale_)*320+32;
         if (Scale_ >= 3)""")
 rep(p,"    NU = GX_NBINS * Sub;","    NU = BinCount() * Sub;")
 rep(p,"        if (Scale_ == 2)\n            for (unsigned k = 1; k < n; k++)",
@@ -318,22 +336,22 @@ rep(p,"        if (Scale_ == 2)\n            for (unsigned k = 1; k < n; k++)",
             for (unsigned k = 1; k < n; k++)""")
 for axis,idx in (("x",0),("y",1)):
     anchor=f"const uint16_t {axis} = (uint16_t)(Scale_ == 2 ?"
-    rep(p,anchor,f"const uint16_t {axis} = (uint16_t)(Wide3D ? v->HiresPosition[{idx}] >> 4 : Scale_ == 2 ?")
+    rep(p,anchor,f"const uint16_t {axis} = (uint16_t)(Wide3D ? (v->HiresPosition[{idx}]*Scale_) >> 4 : Scale_ == 2 ?")
 rep(p,"for (unsigned b = 0; b < GX_NBINS; b++) { BinKey[b].clear(); BinReuse[b] = false; }",
     "for (unsigned b = 0; b < BinCount(); b++) { BinKey[b].clear(); BinReuse[b] = false; }")
 rep(p,"for (unsigned b = 0; b < GX_NBINS; b++) any |= BinReuse[b];",
     "for (unsigned b = 0; b < BinCount(); b++) any |= BinReuse[b];")
 rep(p,"const unsigned BL = GX_BL * Scale_, H = GX_H * Scale_;",
-    "const unsigned BL = GX_BL * Scale_, H = Wide3D ? 240 : GX_H * Scale_;")
+    "const unsigned BL = GX_BL * Scale_, H = Wide3D ? 240*Scale_ : GX_H * Scale_;")
 rep(p,"for (unsigned b = 0; b < GX_NBINS; b++) {\n        const unsigned hy0",
     "for (unsigned b = 0; b < BinCount(); b++) {\n        const unsigned hy0")
 rep(p,"void GengisRenderer3D::RenderBin(unsigned b, uint32_t* dst) {",
     """void GengisRenderer3D::RenderBin(unsigned b, uint32_t* dst) {
-    if (Wide3D) { gxwide_render_bin(&Frame,b,dst); return; }""")
+    if (Wide3D) { (Scale_==2 ? gxwide2_render_bin : gxwide_render_bin)(&Frame,b,dst); return; }""")
 rep(p,"const size_t un = (size_t)GX_BL * GX_W * Scale_ * Scale_ / Sub;",
     "const size_t un = UnitWords();")
 rep(p,"const unsigned bin = (unsigned)line / (GX_BL / Sub);\n    auto drawn",
     "const unsigned bin = (unsigned)(line+(Wide3D?24:0)) / (GX_BL / Sub);\n    auto drawn")
 rep(p,"    if (line < GX_H) WaitBin((unsigned)line / (GX_BL / Sub));",
     "    if (line < GX_H) WaitBin((unsigned)(line+(Wide3D?24:0)) / (GX_BL / Sub));")
-print("Native 320x240 raster source integrated: 15 bins, centered crop, 1x logical samples")
+print("Expanded 320x240 and 640x480 raster variants integrated: 15 bins, exact centered crop")
