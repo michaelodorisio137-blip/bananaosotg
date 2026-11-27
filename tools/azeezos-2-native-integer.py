@@ -30,7 +30,7 @@ if sys.argv[1]=="--ui":
     assert s.count(anchor)==1
     s=s.replace(anchor,'''add(BD, "nds", "Expanded 3D camera", "Experimental: expand the 3D scene together with the 2D viewport in Native integer mode. Turn off if a game has visual problems.",
                 menu, "azeez_ds_wide3d", { "On", "Off" }, { "on", "off" });
-            add(BD, "nds", "Fast expanded 3D", "Use native 3D resolution for maximum speed. Off retains the selected higher resolution; per-game overrides take precedence.",
+            add(BD, "nds", "Fast expanded 3D", "Use native 3D resolution and nearest textures for maximum speed. Off restores selected resolution and filtering; per-game resolution overrides take precedence.",
                 menu, "azeez_ds_fast", { "On", "Off" }, { "on", "off" });
             '''+anchor,1)
     p.write_text(s)
@@ -124,10 +124,10 @@ replace(bd,'cd $D\nexec /usr/bin/bananads "$ROM"',
         done
     }
     if [ "$(az_ds_setting azeez_ds_wide3d)" != off ]; then
-        export AZEEZ_DS_WIDE3D=1 MELONDS_GEOMREJECT=0
+        export AZEEZ_DS_WIDE3D=1 MELONDS_GEOMREJECT=0 BANANADS_RENDER_GEOM_REJECT=off
     fi
     if [ "$(az_ds_setting azeez_ds_fast)" != off ]; then
-        export BANANADS_RENDER_SCALE="${BANANADS_RENDER_SCALE:-1}"
+        export BANANADS_RENDER_SCALE="${BANANADS_RENDER_SCALE:-1}" BANANADS_RENDER_TEXFILTER=0
     fi
 fi
 cd $D
