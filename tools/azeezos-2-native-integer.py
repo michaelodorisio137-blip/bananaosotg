@@ -37,7 +37,7 @@ for launcher in (ra,bf):
     case "$BANANA_SYSTEM" in
         nes) VCORE=fceumm ;;
         megadrive) VCORE=genesis_plus_gx_wide ;;
-        snes) VCORE=bsnes_hd_beta ;;
+        snes) VCORE=bananasnes ;;
         gb|gbc|gba) VCORE=mgba_integer ;;
         *) VCORE= ;;
     esac
