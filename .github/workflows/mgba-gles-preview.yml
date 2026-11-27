@@ -5,6 +5,7 @@ on:
     branches: [azeezos-2.0]
     paths:
       - 'tools/mgba-gles-preview.py'
+      - 'tools/mgba-polygon-trace.py'
       - '.github/workflows/mgba-gles-preview.yml'
 permissions:
   contents: read
@@ -49,6 +50,7 @@ jobs:
           glslangValidator -S vert /tmp/exterior.vert
           glslangValidator -S frag /tmp/exterior.frag
           python3 tools/mgba-gles-preview.py mgba-host
+          python3 tools/mgba-polygon-trace.py mgba-host
           cmake -S mgba-host -B mgba-host/build -DLIBMGBA_ONLY=ON -DBUILD_LIBRETRO=ON -DCMAKE_BUILD_TYPE=Release
           cmake --build mgba-host/build --target mgba_libretro --parallel 4
           test -s mgba-host/build/mgba_libretro.so
@@ -58,11 +60,12 @@ jobs:
         run: |
           set -eu
           pkg=BananaLinux/buildroot/package/libretro-mgba
-          cp tools/mgba-gles-preview.py "$pkg/"
+          cp tools/mgba-gles-preview.py tools/mgba-polygon-trace.py "$pkg/"
           cat >> /tmp/mgba-gpu-hook <<'EOF'
           LIBRETRO_MGBA_DEPENDENCIES += libegl libgles
           define LIBRETRO_MGBA_GLES_PREVIEW
           	python3 $(BR2_EXTERNAL_BANANA_PATH)/package/libretro-mgba/mgba-gles-preview.py $(@D)
+          	python3 $(BR2_EXTERNAL_BANANA_PATH)/package/libretro-mgba/mgba-polygon-trace.py $(@D)
           endef
           LIBRETRO_MGBA_POST_PATCH_HOOKS += LIBRETRO_MGBA_GLES_PREVIEW
           EOF
@@ -80,6 +83,7 @@ jobs:
           readelf -h out/mgba_gles_preview_libretro.so | grep -q AArch64
           readelf -Ws out/mgba_gles_preview_libretro.so > /tmp/arm-symbols
           grep -q glBlitFramebuffer /tmp/arm-symbols
+          strings out/mgba_gles_preview_libretro.so | grep -F "candidate sites only"
           readelf -d out/mgba_gles_preview_libretro.so | grep -q libGLES
           git rev-parse HEAD > out/SOURCE-COMMIT
           (cd out; sha256sum *.so > SHA256SUMS)
