@@ -62,3 +62,5 @@ subprocess.run([sys.executable, str(Path(__file__).with_name('azeezos-2-virtualb
 subprocess.run([sys.executable, str(Path(__file__).with_name('azeezos-2-pce.py')), '--build', str(root)], check=True)
 
 subprocess.run([sys.executable, str(Path(__file__).with_name('azeezos-2-ngp.py')), '--build', str(root)], check=True)
+
+subprocess.run([sys.executable, str(Path(__file__).with_name('azeezos-2-saturn.py')), '--build', str(root)], check=True)

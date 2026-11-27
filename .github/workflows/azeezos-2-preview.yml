@@ -183,7 +183,7 @@ jobs:
           cmp BananaLinux/output/rgds/target/usr/lib/libretro/mupen64plus_next_libretro.so rootfs/usr/lib/libretro/mupen64plus_next_libretro.so
           install -m 0644 BananaLinux/output/rgds/target/usr/lib/libretro/mgba_integer_libretro.so rootfs/usr/lib/libretro/mgba_integer_libretro.so
           cmp BananaLinux/output/rgds/target/usr/lib/libretro/mgba_integer_libretro.so rootfs/usr/lib/libretro/mgba_integer_libretro.so
-          for core in fceumm pcsx_rearmed genesis_plus_gx_wide bsnes_hd_beta mednafen_vb mednafen_pce_fast mednafen_ngp; do
+          for core in fceumm pcsx_rearmed genesis_plus_gx_wide bsnes_hd_beta mednafen_vb mednafen_pce_fast mednafen_ngp yabasanshiro; do
             test -s "BananaLinux/output/rgds/target/usr/lib/libretro/${core}_libretro.so"
             install -m 0644 "BananaLinux/output/rgds/target/usr/lib/libretro/${core}_libretro.so" "rootfs/usr/lib/libretro/${core}_libretro.so"
           done
