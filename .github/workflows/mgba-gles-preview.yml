@@ -34,8 +34,20 @@ jobs:
       - name: Compile native GLES bridge before cross-build
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y build-essential bc bison flex libssl-dev libelf-dev unzip rsync cpio file wget python3-dev swig libgnutls28-dev cmake libgles-dev libegl-dev
+          sudo apt-get install -y build-essential bc bison flex libssl-dev libelf-dev unzip rsync cpio file wget python3-dev swig libgnutls28-dev cmake libgles-dev libegl-dev glslang-tools
           python3 -m py_compile tools/mgba-gles-preview.py
+          python3 - <<'PY'
+          import ast
+          from pathlib import Path
+          tree=ast.parse(Path("tools/mgba-gles-preview.py").read_text())
+          for n in tree.body:
+              if isinstance(n,ast.Assign) and len(n.targets)==1 and isinstance(n.targets[0],ast.Name):
+                  name=n.targets[0].id
+                  if name in ("vertex","fragment"):
+                      Path("/tmp/exterior."+("vert" if name=="vertex" else "frag")).write_text(ast.literal_eval(n.value))
+          PY
+          glslangValidator -S vert /tmp/exterior.vert
+          glslangValidator -S frag /tmp/exterior.frag
           python3 tools/mgba-gles-preview.py mgba-host
           cmake -S mgba-host -B mgba-host/build -DLIBMGBA_ONLY=ON -DBUILD_LIBRETRO=ON -DCMAKE_BUILD_TYPE=Release
           cmake --build mgba-host/build --target mgba_libretro --parallel 4
@@ -71,7 +83,7 @@ jobs:
           readelf -d out/mgba_gles_preview_libretro.so | grep -q libGLES
           git rev-parse HEAD > out/SOURCE-COMMIT
           (cd out; sha256sum *.so > SHA256SUMS)
-          echo 'Experimental hardware renderer only. No expanded exterior yet. Hardware testing required.' > out/README.txt
+          echo 'Experimental hardware renderer with live VRAM expanded exterior (320x240 logical, 640x480 output). Hardware testing required; offscreen sprites and unavailable game data are not fabricated.' > out/README.txt
       - uses: actions/upload-artifact@v4
         with:
           name: mgba-gles-preview-rgds
