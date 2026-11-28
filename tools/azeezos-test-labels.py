@@ -18,12 +18,17 @@ labels={
 if mode=="--ui":
     p=root/"ui/src/settings.cpp";s=p.read_text()
     a="names.push_back(c.second); values.push_back(c.first);"
-    if s.count(a)!=1: raise SystemExit("Test label anchor mismatch")
-    s=s.replace(a,'''std::string label = getConfValue("/usr/share/banana/emulator-tests.conf", c.first, "");
+    # Runtime-label integration runs first and owns the Settings hook.
+    # Never install a second hook or label inherited binaries as rebuilt.
+    if 'getConfValue("/etc/banana/emulator-tests.conf", c.first, "")' in s:
+        if 'names.push_back(test.empty()?c.second:test); values.push_back(c.first);' not in s:
+            raise SystemExit("Incomplete runtime test-label hook")
+    else:
+        if s.count(a)!=1: raise SystemExit("Test label anchor mismatch")
+        s=s.replace(a,'''std::string label = getConfValue("/usr/share/banana/emulator-tests.conf", c.first, "");
                 if (access(("/data/retroarch/cores/" + std::string(c.first) + "_libretro.so").c_str(), F_OK) == 0) label.clear();
                 names.push_back(label.empty() ? c.second : label); values.push_back(c.first);''')
-    s=s.replace('"melonDS (Azeez Enhanced)"','"T1melonDS"')
-    p.write_text(s)
+        p.write_text(s)
     root=root/"system/rootfs"
 elif mode!="--rootfs": raise SystemExit("Use --ui or --rootfs")
 themes=root/"usr/share/banana/themes"; themes.mkdir(parents=True,exist_ok=True)
