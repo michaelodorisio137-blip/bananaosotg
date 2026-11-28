@@ -75,7 +75,7 @@ if sys.argv[1]=="--ui":
     assert s.count(anchor)==1
     s=s.replace(anchor,'''add(BD, "nds", "Expanded 3D camera", "Experimental: expand the 3D scene together with the 2D viewport in Native integer mode. Turn off if a game has visual problems.",
                 menu, "azeez_ds_wide3d", { "On", "Off" }, { "on", "off" });
-            add(BD, "nds", "Expanded 3D resolution", "Actual 3D raster size in expanded mode. Both keep DS 2D pixels at exact 2x on the 640x480 panels. Native is the faster mode.",
+            add(BD, "nds", "3D resolution", "Actual 3D raster size in expanded mode. Both keep DS 2D pixels at exact 2x on the 640x480 panels. Native is the faster mode.",
                 bds, "render.expanded_scale", { "240p (320x240)", "480p (640x480)" }, { "1", "2" });
             items.back().def = "1";
             add(BD, "nds", "DS integer presentation", "Use a centered 320x240 canvas on RG DS. Off restores the original presentation unless global Native integer mode is on.",

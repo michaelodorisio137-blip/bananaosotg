@@ -1,6 +1,7 @@
 name: AzeezOS clean emulator rebuild
 on:
   workflow_dispatch:
+  workflow_call:
   push:
     branches: [azeezos-2.0]
     paths:
