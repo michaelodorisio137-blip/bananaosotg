@@ -19,7 +19,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y clang libc++-dev libc++abi-dev cmake ninja-build libepoxy-dev libfreetype-dev libpng-dev libmpg123-dev xxd libgl1-mesa-dev libegl1-mesa-dev libdrm-dev libgbm-dev libudev-dev libasound2-dev pkg-config
           git clone --depth 1 --branch release-3.2.28 https://github.com/libsdl-org/SDL.git /tmp/SDL
-          cmake -S /tmp/SDL -B /tmp/sdl-build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSDL_TEST_LIBRARY=OFF -DSDL_TESTS=OFF -DSDL_KMSDRM=ON
+          cmake -S /tmp/SDL -B /tmp/sdl-build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSDL_TEST_LIBRARY=OFF -DSDL_TESTS=OFF -DSDL_KMSDRM=ON -DSDL_UNIX_CONSOLE_BUILD=ON -DSDL_INSTALL=ON -DSDL_X11=OFF -DSDL_WAYLAND=OFF
           cmake --build /tmp/sdl-build -j 4
           sudo cmake --install /tmp/sdl-build
           sudo ldconfig
@@ -30,6 +30,7 @@ jobs:
           python3 tools/simcity4/patch-engine.py engine
           python3 -m py_compile tools/simcity4/prepare-profile.py
           sh -n tools/simcity4/launch-test.sh
+          python3 tools/simcity4/test-profile.py
       - name: Build native engine
         run: |
           export PKG_CONFIG_PATH=/usr/local/lib/aarch64-linux-gnu/pkgconfig:/usr/local/lib/pkgconfig:${PKG_CONFIG_PATH:-}
@@ -45,7 +46,7 @@ jobs:
           cp tools/simcity4/{README.md,prepare-profile.py,launch-test.sh} out/
           git -C engine diff > out/rgds-touch.patch
           git -C engine archive --format=tar.gz -o "$PWD/out/upstream-source.tar.gz" HEAD
-          sha256sum out/sc4_game_linux > out/SHA256SUMS
+          (cd out; sha256sum sc4_game_linux > SHA256SUMS)
       - uses: actions/upload-artifact@v4
         with:
           name: simcity4-arm64-linux-reference-NOT-RGDS-OTA

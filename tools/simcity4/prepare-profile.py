@@ -54,6 +54,12 @@ def main():
                     except ValueError as e: item["warning"]=str(e)
                 if p.suffix.lower()==".dll" and rel.parts[0].casefold()=="plugins": item["warning"]="Windows DLL requires a native equivalent"
                 entries.append(item)
+        user=tmp/"UserData";user.mkdir(exist_ok=True)
+        # The engine already supports SC4_DOCUMENTS; keep installation plugins separate.
+        # If no separate user region exists, seed it with the copied installation regions.
+        if not (user/"Regions").exists() and (game/"Regions").is_dir():
+            shutil.copytree(game/"Regions",user/"Regions")
+        (user/"Plugins").mkdir(exist_ok=True)
         (tmp/"inventory.json").write_text(json.dumps(entries,indent=2)+"\n")
         (tmp/"home").mkdir()
         tmp.rename(dst)
