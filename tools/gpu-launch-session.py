@@ -30,7 +30,7 @@ fi
 # Explicit downloaded and unclassified cores use RetroArch; its core negotiates the graphics API.
 AZ_OTHER=0
 case "$AZ_SELECTED" in
-    ""|gpsp|mgba|mgba_integer|mgba_expanded|gambatte|fceumm|snes9x|bananasnes|genesis_plus_gx_wide|picodrive) ;;
+    ""|gpsp|mgba|mgba_integer|mgba_expanded|gambatte|fceumm|snes9x|bananasnes|genesis_plus_gx_wide|picodrive|mednafen_vb|vboycolor) ;;
     *) [ -z "$AZ_CHOSEN" ] || AZ_OTHER=1 ;;
 esac
 case "$AZ_CHOSEN" in /data/retroarch/cores/*) AZ_OTHER=1 ;; esac
@@ -55,7 +55,7 @@ case "$BANANA_SYSTEM" in
     psp)
         [ -s /usr/lib/libretro/ppsspp_azeez_libretro.so ] && CORE=/usr/lib/libretro/ppsspp_azeez_libretro.so ;;
     virtualboy)
-        [ -s /usr/lib/libretro/vboycolor_libretro.so ] && CORE=/usr/lib/libretro/vboycolor_libretro.so ;;
+        [ -s /usr/lib/libretro/mednafen_vb_libretro.so ] && CORE=/usr/lib/libretro/mednafen_vb_libretro.so ;;
 esac
 else
     CORE="$AZ_CHOSEN"
@@ -67,12 +67,31 @@ rep('CFG=/data/retroarch/retroarch.cfg', '''# Honor an explicit installed core a
 if [ "$AZ_GBA_GPU" = 1 ]; then
     CORE=/usr/lib/libretro/mgba_gles_preview_libretro.so
 fi
+if [ "$BANANA_SYSTEM" = virtualboy ] && [ "${CORE##*/}" = mednafen_vb_libretro.so ]; then
+    export AZEEZ_EXPANDED_VIEWPORT=1
+fi
 CFG=/data/retroarch/retroarch.cfg''')
 rep("BKEYS='^(video_shader_enable|video_smooth|",
     "BKEYS='^(video_driver|video_context_driver|video_threaded|video_max_swapchain_images|crt_switch_resolution|auto_overrides_enable|system_directory|video_shader_enable|video_smooth|")
 anchor="# anything RetroArch keeps that retroarch.cfg doesn't place"
 rep(anchor, """# Azeez GPU session settings. Reuse the existing crash-safe config backup.
 # No changes to the user's global driver, CRT, or integer-scaling preferences.
+if [ "$BANANA_SYSTEM" = virtualboy ] && [ "${CORE##*/}" = mednafen_vb_libretro.so ]; then
+    if [ -z "$BA" ]; then
+        grep -E "$BKEYS" "$CFG" > "$BKEEP.new" || :
+        mv "$BKEEP.new" "$BKEEP" && sync
+    fi
+    cat > "$BCFG" <<'AZ_VB'
+video_shader_enable = "false"
+video_smooth = "false"
+video_scale_integer = "true"
+aspect_ratio_index = "21"
+video_viewport_bias_x = "0.500000"
+video_viewport_bias_y = "0.500000"
+input_overlay_enable = "false"
+AZ_VB
+    BA="|$BCFG"
+fi
 case "$BANANA_SYSTEM:$AZ_GBA_GPU:$AZ_OTHER" in
 saturn:*|psp:*|gba:1:*|*:*:1)
     if [ -z "$BA" ]; then
@@ -96,18 +115,27 @@ AZ_GPU
     if [ "$BANANA_SYSTEM" = saturn ]; then
         # Locate the required BIOS without altering user's configured files.
         BIOSDIR=$(sed -n 's/^system_directory = "\\(.*\\)"/\\1/p' "$CFG" | tail -n 1)
-        for d in "$BIOSDIR" /data/bios /data/bios/saturn /data/bios/Saturn /data/retroarch/system /data/retroarch/system/saturn; do
-            [ -n "$d" ] || continue
-            found=
-            for n in saturn_bios.bin sega_101.bin mpr-17933.bin; do
-                [ -s "$d/$n" ] && { found=1; break; }
+        AZ_SATURN_BIOS=
+        SDROM=$(cat /run/banana/sd2/roms 2>/dev/null || :)
+        ROMDIR=$(dirname "$2")
+        for d in "$BIOSDIR" /data/bios /data/bios/saturn /data/bios/Saturn /data/retroarch/system /data/retroarch/system/saturn "$ROMDIR" "$ROMDIR/bios" "${ROMDIR%/*}/bios" "${SDROM%/roms}/bios" "${SDROM%/roms}/bios/saturn"; do
+            [ -n "$d" ] && [ -d "$d" ] || continue
+            for f in "$d"/*; do
+                [ -f "$f" ] || continue
+                n=$(basename "$f" | tr '[:upper:]' '[:lower:]')
+                case "$n" in saturn_bios.bin|sega_101.bin|mpr-17933.bin) ;; *) continue ;; esac
+                [ "$(wc -c < "$f")" -eq 524288 ] || continue
+                mkdir -p /run/banana/saturn-bios
+                rm -f /run/banana/saturn-bios/saturn_bios.bin /run/banana/saturn-bios/sega_101.bin /run/banana/saturn-bios/mpr-17933.bin
+                ln -s "$f" "/run/banana/saturn-bios/$n" || continue
+                AZ_SATURN_BIOS="$f"
+                printf 'system_directory = "/run/banana/saturn-bios"\\n' >> "$BCFG"
+                break 2
             done
-            if [ "$found" = 1 ]; then
-                printf 'system_directory = "%s"\\n' "$d" >> "$BCFG"
-                echo "Azeez Saturn BIOS directory: $d" >&2
-                break
-            fi
         done
+        if [ -z "$AZ_SATURN_BIOS" ]; then
+            echo "Azeez Saturn: no recognized 512 KiB BIOS found" >&2
+        fi
     fi
     BA="|$BCFG"
     echo "Azeez GPU session: $BANANA_SYSTEM $CORE, GL/KMS" >&2
@@ -133,6 +161,8 @@ saturn:*|psp:*|gba:1)
     printf '%s\n' "core=$CORE" "system=$BANANA_SYSTEM" > "$AZ_GPU_LOG"
     if [ "$BANANA_SYSTEM" = saturn ]; then
         grep '^system_directory = ' "$CFG" >> "$AZ_GPU_LOG" || :
+        grep '^system_directory = ' "$BCFG" >> "$AZ_GPU_LOG" || :
+        printf 'bios=%s\n' "${AZ_SATURN_BIOS:-NOT FOUND}" >> "$AZ_GPU_LOG"
         for bios in saturn_bios.bin sega_101.bin mpr-17933.bin; do
             [ ! -f "/data/bios/$bios" ] || ls -l "/data/bios/$bios" >> "$AZ_GPU_LOG"
         done
@@ -171,10 +201,10 @@ trap 'rm -f "$tmp"' EXIT HUP INT TERM
 # Preserve all unrelated settings and per-game overrides.
 awk '!/^[ \t]*(nds_emulator|core[.]gba)[ \t]*=/' "$C" > "$tmp"
 printf '%s\n' 'nds_emulator = bananads' 'core.gba = mgba_gles_preview' >> "$tmp"
-# Default to color only when the new core is actually installed.
-if [ -s /usr/lib/libretro/vboycolor_libretro.so ]; then
+# Restore the expanded core as default; color remains selectable until it supports the viewport.
+if [ -s /usr/lib/libretro/mednafen_vb_libretro.so ]; then
     awk '!/^[ \t]*core[.]virtualboy[ \t]*=/' "$tmp" > "$tmp.vb"
-    printf '%s\n' 'core.virtualboy = vboycolor' >> "$tmp.vb"
+    printf '%s\n' 'core.virtualboy = mednafen_vb' >> "$tmp.vb"
     mv "$tmp.vb" "$tmp"
 fi
 chmod 0644 "$tmp"
