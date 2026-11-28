@@ -309,11 +309,19 @@ rep("melonds/src/GPU3D.cpp","            vtx->HiresPosition[0] = posX & 0x1FFF;\
                 vtx->HiresPosition[0] = posX & 0x1FFF;
                 vtx->HiresPosition[1] = posY & 0xFFF;
             }""")
-# Expanded coordinates must also govern polygon bounds and sorting.
-rep("melonds/src/GPU3D.cpp","    s32 ytop = 192, ybot = 0;\n    s32 xtop = 256, xbot = 0;",
-    "    s32 ytop = azWide ? 240 : 192, ybot = 0;\n    s32 xtop = azWide ? 320 : 256, xbot = 0;")
-rep("melonds/src/GPU3D.cpp","    if (ybot > 192) poly->Degenerate = true;",
-    "    if (ybot > (azWide ? 240 : 192)) poly->Degenerate = true;")
+# BananaDS has both synchronous and worker-thread polygon finalizers.
+# Adjust both, keeping the worker's scope independent of SubmitPolygonBody.
+p=root/"melonds/src/GPU3D.cpp"
+src=p.read_text()
+for old,new in (
+    ("    s32 ytop = 192, ybot = 0;\n    s32 xtop = 256, xbot = 0;",
+     "    const bool azBoundsWide=getenv(\"AZEEZ_DS_WIDE3D\")!=nullptr;\n    s32 ytop = azBoundsWide ? 240 : 192, ybot = 0;\n    s32 xtop = azBoundsWide ? 320 : 256, xbot = 0;"),
+    ("    if (ybot > 192) poly->Degenerate = true;",
+     "    if (ybot > (azBoundsWide ? 240 : 192)) poly->Degenerate = true;")
+):
+    if src.count(old)!=2: raise SystemExit("DS sync/worker bounds anchor mismatch: "+old)
+    src=src.replace(old,new)
+p.write_text(src)
 # Expanded mode uses 1x the new canvas, not conventional supersampling.
 rep("bananads/src/emu.cpp","    const int scale = scale_cfg >= 2 && scale_cfg <= 4 ? (int)scale_cfg : 1;",
     """    const bool native_wide = getenv("AZEEZ_DS_WIDE3D") != nullptr;
