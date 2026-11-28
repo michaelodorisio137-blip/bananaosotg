@@ -112,6 +112,9 @@ jobs:
           install -m 0755 components/usr/bin/bananads rootfs/usr/bin/bananads
           install -m 0755 ui-component/usr/bin/banana-ui rootfs/usr/bin/banana-ui
           install -m 0755 ui-component/usr/bin/bananafront rootfs/usr/bin/bananafront
+          install -m 0644 ui-component/usr/lib/libretro/ppsspp_azeez_libretro.so rootfs/usr/lib/libretro/ppsspp_azeez_libretro.so
+          cp -a ui-component/usr/share/banana/PPSSPP/. rootfs/usr/share/banana/PPSSPP/
+          cmp ui-component/usr/lib/libretro/ppsspp_azeez_libretro.so rootfs/usr/lib/libretro/ppsspp_azeez_libretro.so
           cmp ui-component/usr/bin/bananafront rootfs/usr/bin/bananafront
           strings rootfs/usr/bin/bananafront > /tmp/front-strings
           grep -Fq /run/banana/az-reflect-frame /tmp/front-strings
@@ -180,7 +183,7 @@ jobs:
           FILE="banana-rgds-$VERSION.update.tar"
           TAG="v$VERSION"
           if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" "out/$FILE" out/SHA256SUMS-rgds.txt --target "$GITHUB_SHA" --title "AzeezOS RG DS 2.0 combined GPU development preview" --notes "Preserves existing DS renderer and software mGBA cores; includes NES scanline seam repair, optional GLES3 expanded GBA core with candidate CRIS routine capture, Saturn/PSP GPU launch isolation, and producer-side BananaFront idle reflection with linear scanout fallback. No live 3D polygon replacement yet. Hardware functionality and speed unverified. Prior OTA preserved." --prerelease --draft
+            gh release create "$TAG" "out/$FILE" out/SHA256SUMS-rgds.txt --target "$GITHUB_SHA" --title "AzeezOS RG DS 2.0 combined GPU development preview" --notes "Preserves existing DS renderer and software mGBA cores; includes NES scanline seam repair, optional GLES3 expanded GBA core with candidate CRIS routine capture, dynamic installed core selection, explicit core priority, PPSSPP buffered renderer and Saturn GPU launch isolation, and producer-side BananaFront idle reflection with linear scanout fallback. No live 3D polygon replacement yet. Hardware functionality and speed unverified. Prior OTA preserved." --prerelease --draft
           fi
           mkdir -p verify
           gh release download "$TAG" --pattern "$FILE" --pattern SHA256SUMS-rgds.txt --dir verify

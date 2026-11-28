@@ -13,6 +13,50 @@ def rep(rel,a,b):
 # Anchor the existing GBA-specific gpSP entry, preserving default ordering.
 rep("settings.cpp",'{ "gpsp", "gpSP" },',
     '{ "gpsp", "gpSP" }, { "mgba_gles_preview", "mGBA Hardware (GLES3 Preview)" },')
+# Discover every installed libretro core, including those without metadata.
+rep("settings.cpp",'\t};\n\tstatic bool coreInstalled(const std::string& core)',r'''
+        { "saturn", "Sega Saturn", { { "yabasanshiro", "YabaSanshiro" }, { "mednafen_saturn", "Beetle Saturn" }, { "yabause", "Yabause" }, { "kronos", "Kronos" } } },
+        { "psp", "PlayStation Portable", { { "ppsspp_azeez", "PPSSPP Azeez 4:3" }, { "ppsspp", "PPSSPP" } } },
+        { "virtualboy", "Virtual Boy", { { "mednafen_vb", "Beetle VB" } } },
+        { "pce", "PC Engine", { { "mednafen_pce_fast", "Beetle PCE Fast" } } },
+        { "ngp", "Neo Geo Pocket", { { "mednafen_ngp", "Beetle NGP" } } },
+    };
+    static std::vector<std::string> azInstalledCores()
+    {
+        std::vector<std::string> out;
+        for(const char* path : {"/usr/lib/libretro", "/data/retroarch/cores"}) {
+            DIR* d=opendir(path);
+            if(!d)continue;
+            while(auto* e=readdir(d)){
+                std::string n=e->d_name, suffix="_libretro.so";
+                if(n.size()<=suffix.size() || n.compare(n.size()-suffix.size(),suffix.size(),suffix)!=0)continue;
+                n.resize(n.size()-suffix.size());
+                if(n.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_+-.")!=std::string::npos)continue;
+                struct stat st={};
+                std::string full=std::string(path)+"/"+e->d_name;
+                if(stat(full.c_str(),&st)!=0 || !S_ISREG(st.st_mode) || st.st_size==0)continue;
+                out.push_back(n);
+            }
+            closedir(d);
+        }
+        std::sort(out.begin(),out.end());
+        out.erase(std::unique(out.begin(),out.end()),out.end());
+        return out;
+    }
+    static bool coreInstalled(const std::string& core)''')
+rep("settings.cpp",'\t\t\tif (coreInstalled(c.first)) { names.push_back(c.second); values.push_back(c.first); }',r'''
+            if (coreInstalled(c.first)) { names.push_back(c.second); values.push_back(c.first); }
+        names.insert(names.begin(),"Automatic (recommended)");
+        values.insert(values.begin(),"auto");
+        for(const auto& c:azInstalledCores()){
+            if(std::find(values.begin(),values.end(),c)!=values.end())continue;
+            names.push_back(c+" (compatibility unverified)");
+            values.push_back(c);
+        }''')
+rep("settings.cpp",'\t\t\tfor (const auto& c : sys.cores) sig += coreInstalled(c.first) ? \'1\' : \'0\';',r'''
+            for (const auto& c : sys.cores) sig += coreInstalled(c.first) ? '1' : '0';
+        for(const auto& c:azInstalledCores())sig+="|"+c;''')
+rep("settings.cpp",'if (names.size() < 2) continue;', 'if (names.empty()) continue;')
 rep("kms.h","int leasedScreen() const { return leased; }",
     """int leasedScreen() const { return leased; }
         // Read an existing linear scanout; no new emulator frame or GL readback.

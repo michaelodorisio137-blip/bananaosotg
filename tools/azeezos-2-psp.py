@@ -28,39 +28,8 @@ if mode=="--source":
     rep(p,'   retro_base_dir /= "PPSSPP";','''   retro_base_dir /= "PPSSPP";
    if (!File::Exists(Path(retro_base_dir / "compat.ini")))
       retro_base_dir = Path("/usr/share/banana/PPSSPP");''')
-    rep(p,'   // Cannot detect refresh rate changes if:', '''   // Keep the host at 480p; the internal PSP VRAM dimensions remain real.
-   g_Config.iInternalResolution = 1;
-   g_Config.bDisplayCropTo16x9 = false;
-   g_Config.iFrameSkip = 0;
-   g_Config.bAutoFrameSkip = false;
-   g_Config.iMultiSampleLevel = 0;
-   g_Config.iTexScalingLevel = 1;
-   if (System_GetPropertyBool(SYSPROP_CAN_JIT))
-      g_Config.iCpuCore = (int)CPUCore::JIT;
-
-   // Cannot detect refresh rate changes if:''')
-    rep(p,'      coreParam.pixelWidth  = coreParam.renderWidth  = g_Config.iInternalResolution * NATIVEWIDTH;\n      coreParam.pixelHeight = coreParam.renderHeight = g_Config.iInternalResolution * NATIVEHEIGHT;','''      coreParam.pixelWidth = 640;
-      coreParam.pixelHeight = 480;
-      coreParam.renderWidth = NATIVEWIDTH;
-      coreParam.renderHeight = NATIVEHEIGHT;''')
-    rep(p,'''   info->geometry.aspect_ratio = (float)info->geometry.base_width / (float)info->geometry.base_height;
-
-   PSP_CoreParameter().pixelWidth  = PSP_CoreParameter().renderWidth  = info->geometry.base_width;
-   PSP_CoreParameter().pixelHeight = PSP_CoreParameter().renderHeight = info->geometry.base_height;''','''   // Direct rendering writes to the native panel-sized hardware backbuffer.
-   // Buffered games keep native PSP-size intermediate render targets.
-   if (ctx && ctx->GetGPUCore() != GPUCORE_SOFTWARE) {
-      info->geometry.base_width = info->geometry.max_width = 640;
-      info->geometry.base_height = info->geometry.max_height = 480;
-      info->geometry.aspect_ratio = 4.0f / 3.0f;
-   } else {
-      info->geometry.aspect_ratio = (float)info->geometry.base_width / info->geometry.base_height;
-   }
-   PSP_CoreParameter().pixelWidth = info->geometry.base_width;
-   PSP_CoreParameter().pixelHeight = info->geometry.base_height;
-   PSP_CoreParameter().renderWidth = NATIVEWIDTH;
-   PSP_CoreParameter().renderHeight = NATIVEHEIGHT;''')
-    rep(p,'   retro_check_backend();','''   retro_check_backend();
-   backend = RETRO_HW_CONTEXT_OPENGL;''')
+    # Restore upstream geometry and context negotiation: do not force desktop GL,
+    # direct framebuffer dimensions or per-game JIT settings at runtime.
     # Fill without anisotropic scaling: a centered 4:3 camera crop.
     # Applies to both the direct GE viewport and buffered presentation.
     rep("GPU/Common/PresentationCommon.cpp",
@@ -78,16 +47,8 @@ if mode=="--source":
         return;
     }
 #endif'''.replace("#ifdef __LIBRETRO__\n","").replace("#endif",""))
-    # Default direct rendering; the existing core option allows buffered
-    # fallback for games that need offscreen GPU effects.
-    p="libretro/libretro_core_options.h"
-    s=(root/p).read_text()
-    start=s.index('"ppsspp_skip_buffer_effects"')
-    end=s.index('\n   },',start)
-    block=s[start:end]
-    assert block.count('"disabled"')==1
-    (root/p).write_text(s[:start]+block.replace('"disabled"','"enabled"')+s[end:])
-    print("PPSSPP native 640x480 direct-render geometry, aspect-preserving crop and buffered fallback installed")
+    # Upstream buffered rendering default; direct mode remains an optional core setting.
+    print("PPSSPP upstream GLES context, native render geometry and buffered default restored")
     sys.exit(0)
 
 def install_menu(r):

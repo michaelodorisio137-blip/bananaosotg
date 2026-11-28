@@ -18,18 +18,34 @@ case "$1" in
     ppsspp|ppsspp_azeez) BANANA_SYSTEM=psp ;;
 esac
 export BANANA_SYSTEM
+AZ_SELECTED=$(setting "core.$BANANA_SYSTEM")
+case "$AZ_SELECTED" in ""|auto|*[!A-Za-z0-9_+.-]*) AZ_SELECTED= ;; esac
+AZ_CHOSEN=
+if [ -n "$AZ_SELECTED" ]; then
+    for d in /data/retroarch/cores /usr/lib/libretro; do
+        [ -s "$d/${AZ_SELECTED}_libretro.so" ] && { AZ_CHOSEN="$d/${AZ_SELECTED}_libretro.so"; break; }
+    done
+fi
+# Explicit downloaded and unclassified cores use RetroArch; its core negotiates the graphics API.
+AZ_OTHER=0
+case "$AZ_SELECTED" in
+    ""|gpsp|mgba|mgba_integer|mgba_expanded|gambatte|fceumm|snes9x|bananasnes|genesis_plus_gx_wide|picodrive) ;;
+    *) [ -z "$AZ_CHOSEN" ] || AZ_OTHER=1 ;;
+esac
+case "$AZ_CHOSEN" in /data/retroarch/cores/*) AZ_OTHER=1 ;; esac
 AZ_GBA_GPU=0
 if [ "$BANANA_SYSTEM" = gba ] && [ -s /usr/lib/libretro/mgba_gles_preview_libretro.so ]; then
-    if [ "$(setting core.gba)" = mgba_gles_preview ] || [ -f /data/banana/gba-gpu.enable ] || [ -f /data/banana/gba-3d-trace.enable ]; then
+    if [ "$AZ_SELECTED" = mgba_gles_preview ] || { [ -z "$AZ_CHOSEN" ] && { [ -f /data/banana/gba-gpu.enable ] || [ -f /data/banana/gba-3d-trace.enable ]; }; }; then
         AZ_GBA_GPU=1
     fi
 fi
-case "$BANANA_SYSTEM:$AZ_GBA_GPU" in
-n64:*|psx:*|saturn:*|psp:*|:*|gba:1) ;;""")
+case "$BANANA_SYSTEM:$AZ_GBA_GPU:$AZ_OTHER" in
+n64:*|psx:*|saturn:*|psp:*|:*|gba:1:*|*:*:1) ;;""")
 # Explicitly select the packaged GPU cores; preserve downloaded alternative if
 # the Saturn core is absent. Do not alter unrelated core settings.
 rep('[ -f "$CORE" ] || { echo "no core $1" >&2; exit 1; }',
-    """# Azeez packaged GPU core resolution
+    """# Azeez packaged GPU core resolution (defaults only)
+if [ -z "$AZ_CHOSEN" ]; then
 case "$BANANA_SYSTEM" in
     saturn)
         for d in /usr/lib/libretro /data/retroarch/cores; do
@@ -38,9 +54,13 @@ case "$BANANA_SYSTEM" in
     psp)
         [ -s /usr/lib/libretro/ppsspp_azeez_libretro.so ] && CORE=/usr/lib/libretro/ppsspp_azeez_libretro.so ;;
 esac
+else
+    CORE="$AZ_CHOSEN"
+fi
 [ "$AZ_GBA_GPU" = 1 ] && CORE=/usr/lib/libretro/mgba_gles_preview_libretro.so
 [ -f "$CORE" ] || { echo "no core $1" >&2; exit 1; }""")
-rep('CFG=/data/retroarch/retroarch.cfg', '''# Preserve the selected GPU core after Native Integer routing.
+rep('CFG=/data/retroarch/retroarch.cfg', '''# Honor an explicit installed core after Native Integer routing.
+[ -z "$AZ_CHOSEN" ] || CORE="$AZ_CHOSEN"
 if [ "$AZ_GBA_GPU" = 1 ]; then
     CORE=/usr/lib/libretro/mgba_gles_preview_libretro.so
 fi
@@ -50,8 +70,8 @@ rep("BKEYS='^(video_shader_enable|video_smooth|",
 anchor="# anything RetroArch keeps that retroarch.cfg doesn't place"
 rep(anchor, """# Azeez GPU session settings. Reuse the existing crash-safe config backup.
 # No changes to the user's global driver, CRT, or integer-scaling preferences.
-case "$BANANA_SYSTEM:$AZ_GBA_GPU" in
-saturn:*|psp:*|gba:1)
+case "$BANANA_SYSTEM:$AZ_GBA_GPU:$AZ_OTHER" in
+saturn:*|psp:*|gba:1:*|*:*:1)
     if [ -z "$BA" ]; then
         grep -E "$BKEYS" "$CFG" > "$BKEEP.new" || :
         mv "$BKEEP.new" "$BKEEP" && sync
@@ -67,7 +87,7 @@ auto_overrides_enable = "false"
 video_shader_enable = "false"
 video_smooth = "false"
 video_scale_integer = "false"
-aspect_ratio_index = "22"
+aspect_ratio_index = "0"
 input_overlay_enable = "false"
 AZ_GPU
     BA="|$BCFG"
@@ -113,5 +133,19 @@ rep('/usr/libexec/banana/ra-secrets scrub; rm -f $RA', r'''if [ -n "$AZ_GPU_LOG"
 fi
 /usr/libexec/banana/ra-secrets scrub; rm -f $RA''')
 p.write_text(s)
+bf=root/"usr/libexec/banana/run-bananafront"
+bs=bf.read_text()
+a="CFG=/data/retroarch/retroarch.cfg"
+assert bs.count(a)==1
+bs=bs.replace(a,r'''# An explicit installed choice outranks automatic native-integer substitutions.
+AZ_SELECTED=$(setting "core.$BANANA_SYSTEM")
+case "$AZ_SELECTED" in ""|auto|*[!A-Za-z0-9_+.-]*) ;;
+*) for d in /data/retroarch/cores /usr/lib/libretro; do
+    [ -s "$d/${AZ_SELECTED}_libretro.so" ] && { CORE="$d/${AZ_SELECTED}_libretro.so"; break; }
+done ;;
+esac
+CFG=/data/retroarch/retroarch.cfg'''.replace("\\$", "$"),1)
+bf.write_text(bs)
+subprocess.run(["sh","-n",str(bf)],check=True)
 subprocess.run(["sh","-n",str(p)],check=True)
 print("PASS: Saturn and PSP GPU launcher isolation, packaged core and menu checks")
