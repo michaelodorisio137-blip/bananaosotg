@@ -114,7 +114,8 @@ input_overlay_enable = "false"
 AZ_GPU
     if [ "$BANANA_SYSTEM" = saturn ]; then
         # Locate the required BIOS without altering user's configured files.
-        BIOSDIR=$(sed -n 's/^system_directory = "\\(.*\\)"/\\1/p' "$CFG" | tail -n 1)
+        BIOSDIR=$(setting bios_folder)
+        [ -d "$BIOSDIR" ] || BIOSDIR=$(sed -n 's/^system_directory = "\\(.*\\)"/\\1/p' "$CFG" | tail -n 1)
         AZ_SATURN_BIOS=
         SDROM=$(cat /run/banana/sd2/roms 2>/dev/null || :)
         ROMDIR=$(dirname "$2")
@@ -141,6 +142,23 @@ AZ_GPU
     echo "Azeez GPU session: $BANANA_SYSTEM $CORE, GL/KMS" >&2
     ;;
 esac
+# Shared system directory for every RetroArch core.
+AZ_BIOS=$(setting bios_folder)
+if [ -n "$AZ_BIOS" ]; then
+    if [ ! -d "$AZ_BIOS" ]; then
+        echo "Azeez BIOS folder unavailable: $AZ_BIOS; using /data/bios" >&2
+        AZ_BIOS=/data/bios
+    fi
+    if [ "$BANANA_SYSTEM" != saturn ] || [ -z "$AZ_SATURN_BIOS" ]; then
+        if [ -z "$BA" ]; then
+            grep -E "$BKEYS" "$CFG" > "$BKEEP.new" || :
+            mv "$BKEEP.new" "$BKEEP" && sync
+            : > "$BCFG"
+        fi
+        printf 'system_directory = "%s"\\n' "$AZ_BIOS" >> "$BCFG"
+        BA="|$BCFG"
+    fi
+fi
 """+anchor)
 # Existing card-specific systems.conf overrides may be stale. The new default
 # launch path is verified; do not overwrite user's custom systems.conf.
@@ -235,7 +253,23 @@ case "$AZ_SELECTED" in ""|auto|*[!A-Za-z0-9_+.-]*) ;;
 done ;;
 esac
 CFG=/data/retroarch/retroarch.cfg'''.replace("\\$", "$"),1)
+a='set -- --system "${BANANA_SYSTEM:-}" --config /data/retroarch/config "$CORE" "$ROM"'
+assert bs.count(a)==1
+bs=bs.replace(a,a+'''
+AZ_BIOS=$(setting bios_folder)
+[ -d "$AZ_BIOS" ] || AZ_BIOS=/data/bios
+set -- --bios "$AZ_BIOS" "$@"''',1)
 bf.write_text(bs)
+bd=root/"usr/libexec/banana/run-bananads"
+ds=bd.read_text()
+a="BANANADS_BIOS=/data/bios"
+assert ds.count(a)==1
+ds=ds.replace(a,a+'''
+AZ_BIOS=$(sed -n '/^ *bios_folder *= */{s///;h};${x;p}' /data/banana/settings.conf 2>/dev/null)
+[ -d "$AZ_BIOS" ] && export BANANADS_BIOS="$AZ_BIOS"
+''',1)
+bd.write_text(ds)
+subprocess.run(["sh","-n",str(bd)],check=True)
 subprocess.run(["sh","-n",str(bf)],check=True)
 subprocess.run(["sh","-n",str(p)],check=True)
 print("PASS: Saturn and PSP GPU launcher isolation, packaged core and menu checks")

@@ -13,6 +13,37 @@ def replace(rel,old,new):
     p.write_text(s.replace(old,new,1))
 
 if sys.argv[1]=="--ui":
+    # OS-wide BIOS directory picker.
+    replace("ui/src/settings.cpp", 'const char* S = "System";', '''const char* S = "System";
+        add(S, "gear", "BIOS folder", "Choose the shared emulator BIOS directory. Open a folder and press Y to select it.", "", "bios_folder_pick", {}, {}, Item::PAGE);''')
+    replace("ui/src/settings.cpp", '{ "System", { "Updates",', '{ "System", { "BIOS folder", "Updates",')
+    replace("ui/src/settings.cpp", 'if (it.key == "scrape") { startScrape(); return MOVED; }', '''if (it.key == "bios_folder_pick") { pickFolder(3, getConfValue(data + "/settings.conf", "bios_folder", "/data/bios"), "BIOS folder"); return MOVED; }
+            if (it.key == "scrape") { startScrape(); return MOVED; }''')
+    replace("ui/src/settings.cpp", 'else if (it.kind == Item::PAGE && it.key == "ds_name")', '''else if (it.kind == Item::PAGE && it.key == "bios_folder_pick") { v = getConfValue(data + "/settings.conf", "bios_folder", "/data/bios"); nameValue = true; }
+            else if (it.kind == Item::PAGE && it.key == "ds_name")''')
+    replace("ui/src/settings_defaults.cpp", '{ "theme", "dark", TEXT, nullptr, 0, 0 },', '{ "theme", "dark", TEXT, nullptr, 0, 0 },\n\t\t\t{ "bios_folder", "/data/bios", TEXT, nullptr, 0, 0 },')
+    replace("ui/src/settings.h", "void pickFolder(int purpose,", "bool biosFolderPicking = false;\n\t\tvoid pickFolder(int purpose,")
+    replace("ui/src/settings_files.cpp", "enum Pick { NO_PICK, PICK_DOWNLOAD, PICK_UNPACK };", "enum Pick { NO_PICK, PICK_DOWNLOAD, PICK_UNPACK, PICK_BIOS };")
+    replace("ui/src/settings_files.cpp", "fm->pick = purpose == 2 ? Files::PICK_UNPACK : Files::PICK_DOWNLOAD;", "biosFolderPicking = purpose == 3;\n\t\tfm->pick = purpose == 3 ? Files::PICK_BIOS : purpose == 2 ? Files::PICK_UNPACK : Files::PICK_DOWNLOAD;")
+    replace("ui/src/settings_files.cpp", 'pick == PICK_UNPACK ? "Unpacking " : "Downloading "', 'pick == PICK_BIOS ? "Selecting " : pick == PICK_UNPACK ? "Unpacking " : "Downloading "')
+    replace("ui/src/settings_files.cpp", 'pick == PICK_UNPACK ? "Unpack here" : "Download here"', 'pick == PICK_BIOS ? "Use folder" : pick == PICK_UNPACK ? "Unpack here" : "Download here"')
+    replace("ui/src/settings_files.cpp", '"B goes back to the download as it was."', '"B cancels folder selection."')
+    replace("ui/src/settings_files.cpp", 'B goes up; from the cards, back to the download as it was.', 'B goes up; from the cards, cancels selection.')
+    replace("ui/src/settings_servers.cpp", 'void Settings::folderPicked(const std::string& dir)\n\t{', '''void Settings::folderPicked(const std::string& dir)
+    {
+        if (biosFolderPicking)
+        {
+            biosFolderPicking = false;
+            page = LIST;
+            if (dir.empty() || dir[0] != '/' || dir.find_first_of("\\r\\n\\"\\\\") != std::string::npos)
+                { message = "Unsupported BIOS folder name."; return; }
+            setConfValue(data + "/settings.conf", "bios_folder", dir);
+            message = "BIOS folder saved.";
+            return;
+        }''')
+    replace("ui/src/settings_servers.cpp", 'void Settings::pickCancelled()\n\t{', '''void Settings::pickCancelled()
+    {
+        if (biosFolderPicking) { biosFolderPicking = false; page = LIST; return; }''')
     replace("ui/src/settings.cpp",
         'add(PS, "picture", "Integer scaling",',
         '''add(PS, "picture", "Native integer mode", "Use whole native pixels across supported emulators. Expanded renderers show real extra background where available; unsupported modes may retain borders.",
