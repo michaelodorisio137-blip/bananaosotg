@@ -165,8 +165,6 @@ sub("settings.h","ACHIEVEMENTS } page = LIST;","ACHIEVEMENTS, MAGAZINE } page = 
 sub("settings.h","void magazineOpen(const std::string& manifest);",'''void magazineOpen(const std::string& manifest);
         void openMagazine(const std::string& manifest);
         void magazineDraw(int screen, bool playing);
-        Result magazinePress(Key k);
-        Result magazineTouch(float x, float y);
         void magazineStep(int step);
         std::string magazineManifest, magazineDefaultRom, magazineRequest, magazineRequestRom;
         std::vector<std::string> magazineLinks;
@@ -177,6 +175,7 @@ sub("settings.h","void magazineOpen(const std::string& manifest);",'''void magaz
         }
         std::string magazineBookmark() const;
         void magazineRemember();''')
+sub("settings.h","Result press(Key k);","Result press(Key k);\n        Result magazinePress(Key k);\n        Result magazineTouch(float x, float y);")
 sub("settings.cpp","Settings::Result Settings::press(Key k)\n\t{","Settings::Result Settings::press(Key k)\n\t{\n        if(page==MAGAZINE) return magazinePress(k);")
 sub("settings.cpp","if (!downOnRow) return NONE;\n\t\tdownOnRow = false;","if (!downOnRow) return NONE;\n\t\tdownOnRow = false;\n        if(page==MAGAZINE) return magazineTouch(cx,cy);")
 sub("settings.cpp","void Settings::renderPage()\n\t{",'''void Settings::renderPage()
