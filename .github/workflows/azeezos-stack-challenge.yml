@@ -1,0 +1,34 @@
+name: Stack Challenge original ROM emulator prototype
+on:
+  push:
+    branches: [azeezos-2.0]
+    paths: ['tools/stack-challenge/**', '.github/workflows/azeezos-stack-challenge.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: azya52/BrickEmuPy
+          ref: 07fca03ac50ce39e13190de4f058ed65d5b6af22
+          path: upstream
+      - run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y python3-cairosvg python3-pil libsdl2-2.0-0
+          /usr/bin/python3 tools/stack-challenge/prepare.py upstream package
+          cp tools/stack-challenge/README.md package/
+          /usr/bin/python3 -m py_compile package/stack.py package/cores/*.py
+          STACK_ROM="$PWD/upstream/assets/RadioShackStackChallenge.bin" /usr/bin/python3 package/stack.py --capture package/captured-effects
+          SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy STACK_ROM="$PWD/upstream/assets/RadioShackStackChallenge.bin" timeout 4s /usr/bin/python3 package/stack.py || test "$?" = 124
+          test -s package/display.json
+          tar -czf stack-challenge-rgds-prototype.tar.gz -C package .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stack-challenge-rgds-prototype
+          path: stack-challenge-rgds-prototype.tar.gz
+          if-no-files-found: error

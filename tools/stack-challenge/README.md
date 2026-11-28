@@ -1,0 +1,6 @@
+# Stack Challenge RG DS prototype
+Original RadioShack Stack Challenge (C6246D2E/E0C6200), using BrickEmuPy pinned at 07fca03ac50ce39e13190de4f058ed65d5b6af22. Original game ROM not bundled in release artifact; place your 12 KiB RadioShackStackChallenge.bin beside stack.py or set STACK_ROM. No invented game logic. The SDL2 front end uses the real LCD segment mapping and original buzzer frequency/envelope events. Host preparation uses CairoSVG and Pillow; runtime requires Python 3 and SDL2 shared library, no Qt.
+
+Keyboard Enter power, arrows, space rotate, P pause, S sound, Escape quit. Raw RG DS joystick mapping needs hardware validation; override STACK_BUTTONS with JSON (button index to action). Use a local terminal to run python3 stack.py. Display is fullscreen SDL, single 640x480 logical screen. KMSDRM display and ALSA route, performance and controls not device verified.
+
+Capture audio using python3 stack.py --capture /path/to/output. Captures are ROM-triggered sound effects with synthesized bipolar piezo waveform; not exact recordings from physical speaker. Only audible observed actions are exported. Menu mappings require listening to captured files before installing; no existing menu audio is overwritten by this prototype. The upstream source and artwork license notice is included; original game ROM copyright is separate.
