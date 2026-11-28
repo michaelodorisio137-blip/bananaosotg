@@ -61,12 +61,22 @@ if sys.argv[1]=="--ui":
     s=s.replace('{ "", "SuperDrastic", "melonDS" }','{ "", "SuperDrastic", "melonDS (Azeez Enhanced)" }')
     s=s.replace('global == "bananads" ? "melonDS"','global == "bananads" ? "melonDS (Azeez Enhanced)"')
     s=s.replace('getConfValue("/etc/banana/settings.conf", "nds_emulator", "superdrastic")','getConfValue("/etc/banana/settings.conf", "nds_emulator", "bananads")')
+    # RG DS has one global 3D target selector and matching per-game overrides.
+    old_start=s.index('add(BD, "nds", "3D resolution", "How sharp DS games')
+    old_end=s.index('add(BD, "nds", "Edge marking",',old_start)
+    s=s[:old_start]+s[old_end:]
+    s=s.replace('GAME_RES_VALUES[] = { "", "1", "2", "3", "4" }','GAME_RES_VALUES[] = { "", "1", "2" }')
+    s=s.replace('GAME_RES_NAMES[] = { "", "1x", "2x", "3x (experimental)", "4x (experimental)" }','GAME_RES_NAMES[] = { "", "240p (320x240)", "480p (640x480)" }')
+    s=s.replace('for (int i = 1; i < 5; i++) if (r == GAME_RES_VALUES[i]) pgRes = i;', 'for (int i = 1; i < 3; i++) if (r == GAME_RES_VALUES[i]) pgRes = i; if (r == "3" || r == "4") pgRes = 2;')
+    s=s.replace('(pgRes + d + 5) % 5','(pgRes + d + 3) % 3')
+    s=s.replace('std::string gres = getConfValue("/data/bananads/bananads.conf", "render.scale", "1");','std::string gres = getConfValue("/data/bananads/bananads.conf", "render.expanded_scale", "1");')
+    s=s.replace('gres == "4" ? "4x (experimental)" : gres == "3" ? "3x (experimental)" : gres == "2" ? "2x" : "1x"','gres == "2" ? "480p (640x480)" : "240p (320x240)"')
     anchor='add(BD, "nds", "Edge marking",'
     assert s.count(anchor)==1
     s=s.replace(anchor,'''add(BD, "nds", "Expanded 3D camera", "Experimental: expand the 3D scene together with the 2D viewport in Native integer mode. Turn off if a game has visual problems.",
                 menu, "azeez_ds_wide3d", { "On", "Off" }, { "on", "off" });
             add(BD, "nds", "Expanded 3D resolution", "Actual 3D raster size in expanded mode. Both keep DS 2D pixels at exact 2x on the 640x480 panels. Native is the faster mode.",
-                bds, "render.expanded_scale", { "320x240 (Native)", "640x480 (HD)" }, { "1", "2" });
+                bds, "render.expanded_scale", { "240p (320x240)", "480p (640x480)" }, { "1", "2" });
             items.back().def = "1";
             add(BD, "nds", "DS integer presentation", "Use a centered 320x240 canvas on RG DS. Off restores the original presentation unless global Native integer mode is on.",
                 menu, "azeez_ds_integer", { "On", "Off" }, { "on", "off" });

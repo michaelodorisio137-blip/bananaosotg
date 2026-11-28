@@ -1,0 +1,84 @@
+name: AzeezOS clean emulator rebuild
+on:
+  workflow_dispatch:
+  push:
+    branches: [azeezos-2.0]
+    paths:
+      - '.github/workflows/azeezos-clean-emulators.yml'
+      - 'tools/azeezos-render-contract.md'
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - group: ds-ui
+            components: ds ui
+          - group: classic
+            components: gba snes nes genesis snes-hd
+          - group: 3d
+            components: n64 ps1 saturn
+          - group: handheld
+            components: virtualboy pce ngp psp
+          - group: frontend
+            components: front retroarch
+          - group: stock-alternatives
+            components: stock
+    env:
+      BR2_DL_DIR: ${{ github.workspace }}/dl
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: JorreFog/BananaLinux
+          ref: 54123092f4cb8195d01b82ad12c880d35de059d0
+          path: BananaLinux
+          persist-credentials: false
+      - name: Dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y build-essential bc bison flex libssl-dev libelf-dev unzip rsync cpio file wget python3-dev swig libgnutls28-dev squashfs-tools cmake libdrm-dev libasound2-dev libfreetype-dev zlib1g-dev
+      - name: Integrate current source
+        run: bash tools/azeezos-2-integrate-build.sh
+      - uses: actions/cache/restore@v4
+        with:
+          path: dl
+          key: clean-dl-${{ matrix.group }}-${{ github.sha }}
+          restore-keys: |
+            rgds-dl-v3-
+            rgds-dl-v2-
+            otg-dl-
+      - name: Fresh compilation
+        env:
+          COMPONENTS: ${{ matrix.components }}
+        run: |
+          rm -rf component-output
+          if [ "$COMPONENTS" = stock ]; then
+            for core in gpsp bananagba gambatte banananes snes9x picodrive vice fuse fake08; do
+              make -C BananaLinux "libretro-$core-rgds"
+            done
+            mkdir -p component-output/usr/lib/libretro
+            cp -a BananaLinux/output/rgds/target/usr/lib/libretro/*.so component-output/usr/lib/libretro/
+            git rev-parse HEAD > component-output/SOURCE-COMMIT
+            for f in component-output/usr/lib/libretro/*.so; do readelf -h "$f" | grep -q AArch64; done
+            (cd component-output; find usr -type f -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS; sha256sum -c SHA256SUMS)
+          else
+            bash tools/azeezos-2-build-components.sh $COMPONENTS
+          fi
+          test "$(cat component-output/SOURCE-COMMIT)" = "$GITHUB_SHA"
+          (cd component-output; sha256sum -c SHA256SUMS)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: clean-${{ matrix.group }}
+          path: component-output/
+          if-no-files-found: error
+  gba-gpu:
+    uses: ./.github/workflows/mgba-gles-preview.yml
+  virtualboy-color:
+    uses: ./.github/workflows/vboycolor-rgds.yml

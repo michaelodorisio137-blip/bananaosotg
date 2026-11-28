@@ -127,8 +127,11 @@ rep(p,'\tmCoreConfigDeinit(&core->config);\n\tcore->deinit(core);','''    azCont
 import json
 vertex=r"""#version 300 es
 void main() {
-    vec2 p=vec2(float((gl_VertexID<<1)&2),float(gl_VertexID&2));
-    gl_Position=vec4(p*2.0-1.0,0,1);
+    const vec4 rects[4]=vec4[4](vec4(0,0,640,80),vec4(0,400,640,480),vec4(0,80,80,400),vec4(560,80,640,400));
+    const vec2 corners[6]=vec2[6](vec2(0,0),vec2(1,0),vec2(0,1),vec2(0,1),vec2(1,0),vec2(1,1));
+    vec4 r=rects[gl_VertexID/6];
+    vec2 p=mix(r.xy,r.zw,corners[gl_VertexID%6]);
+    gl_Position=vec4(p/vec2(320.0,240.0)-1.0,0,1);
 }
 """
 fragment=r"""#version 300 es
@@ -338,7 +341,7 @@ static void azExteriorBatch(struct GBAVideoGLRenderer* r,int last) {
     glUniform4i(azBlend,r->blendEffect,r->blda,r->bldb,r->bldy);
     glUniform2i(azBatch,first,last);
     glUniform2i(azMosaic,GBAMosaicControlGetBgH(r->mosaic)+1,GBAMosaicControlGetBgV(r->mosaic)+1);
-    glDrawArrays(GL_TRIANGLES,0,3);
+    glDrawArrays(GL_TRIANGLES,0,24);
     glBindVertexArray(0);glActiveTexture(GL_TEXTURE0);
 }
 '''.replace("@VERT@",cstr(vertex)).replace("@FRAG@",cstr(fragment))

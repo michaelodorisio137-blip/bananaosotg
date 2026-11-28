@@ -30,7 +30,7 @@ fi
 # Explicit downloaded and unclassified cores use RetroArch; its core negotiates the graphics API.
 AZ_OTHER=0
 case "$AZ_SELECTED" in
-    ""|gpsp|mgba|mgba_integer|mgba_expanded|gambatte|fceumm|snes9x|bananasnes|genesis_plus_gx_wide|picodrive|mednafen_vb|vboycolor) ;;
+    ""|gpsp|mgba|mgba_integer|mgba_expanded|gambatte|fceumm|snes9x|bananasnes|genesis_plus_gx_wide|picodrive|mednafen_vb|vboycolor|pcsx_rearmed|mupen64plus_next) ;;
     *) [ -z "$AZ_CHOSEN" ] || AZ_OTHER=1 ;;
 esac
 case "$AZ_CHOSEN" in /data/retroarch/cores/*) AZ_OTHER=1 ;; esac
@@ -142,6 +142,16 @@ AZ_GPU
     echo "Azeez GPU session: $BANANA_SYSTEM $CORE, GL/KMS" >&2
     ;;
 esac
+# Native 240p/480p N64 sessions retain the upstream three-buffer pipeline.
+if [ "$BANANA_SYSTEM" = n64 ] && [ "${CORE##*/}" = mupen64plus_next_libretro.so ]; then
+    if [ -z "$BA" ]; then
+        grep -E "$BKEYS" "$CFG" > "$BKEEP.new" || :
+        mv "$BKEEP.new" "$BKEEP" && sync
+        : > "$BCFG"
+    fi
+    printf '%s\\n' 'video_max_swapchain_images = "3"' 'video_threaded = "false"' 'crt_switch_resolution = "0"' >> "$BCFG"
+    BA="|$BCFG"
+fi
 # Shared system directory for every RetroArch core.
 AZ_BIOS=$(setting bios_folder)
 if [ -n "$AZ_BIOS" ]; then

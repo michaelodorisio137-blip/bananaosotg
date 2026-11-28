@@ -198,7 +198,9 @@ rep("main.cpp","bool linkSeen = false, pipeWarned = false;",r"""bool linkSeen = 
                 std::ifstream f("/run/banana/az-reflect-frame",std::ios::binary);
                 producer=bool(f.read(reinterpret_cast<char*>(src),sizeof src));
             }
-            if(!producer && !disp.idleReflection(src,w,h))return false;
+            // Never map or wait on a GPU-owned scanout during emulation.
+            // Use the nonblocking producer tap; no producer means no reflection.
+            if(!producer)return false;
             rnds::Bitmap b;b.w=w;b.h=h;b.px.resize(w*h*4);
             // 3x3 low-resolution blur, with a darkening factor; backlight supplies the rest.
             for(int y=0;y<h;y++)for(int x=0;x<w;x++){

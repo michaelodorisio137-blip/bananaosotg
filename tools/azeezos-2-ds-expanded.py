@@ -146,6 +146,11 @@ const uint32_t* Emu::expanded_screen(bool bottom_screen, uint32_t* dest, int pit
         for(int span=0;span<(center?2:1);span++) {
             int first=center && span?288:0;
             int last=center && !span?32:320;
+            if(blank || layer_count==0) {
+                const uint32_t color=blank?0xffffffffu:rgb(backdrop);
+                for(int i=first*2;i<last*2;++i) a[i]=b[i]=color;
+                continue;
+            }
             for(int i=first;i<last;i++) {
                     if(scene && sc3==2) {
                     a[i*2]=sample(i-32,y-24,0,0);
@@ -325,7 +330,9 @@ p.write_text(src)
 # Expanded mode uses 1x the new canvas, not conventional supersampling.
 rep("bananads/src/emu.cpp","    const int scale = scale_cfg >= 2 && scale_cfg <= 4 ? (int)scale_cfg : 1;",
     """    const bool native_wide = getenv("AZEEZ_DS_WIDE3D") != nullptr;
-    const int scale = native_wide ? (banana2d && cfg_.num("render.expanded_scale",1)==2 ? 2 : 1) : (scale_cfg >= 2 && scale_cfg <= 4 ? (int)scale_cfg : 1);
+    const bool override_scale = getenv("BANANADS_RENDER_SCALE") != nullptr;
+    const int target = override_scale ? (scale_cfg >= 2 ? 2 : 1) : (cfg_.num("render.expanded_scale",1)==2 ? 2 : 1);
+    const int scale = native_wide ? (banana2d ? target : 1) : (scale_cfg >= 2 && scale_cfg <= 4 ? (int)scale_cfg : 1);
     if (native_wide) Log(LogLevel::Info, "[azeez] expanded 3D raster: %dx%d\\n",320*scale,240*scale);""")
 rep("bananads/src/emu.cpp",'    const bool banana2d = cfg_.str("render.2d", "banana") == "banana";',
     '    const bool banana2d = getenv("AZEEZ_DS_WIDE3D") != nullptr || cfg_.str("render.2d", "banana") == "banana";')
