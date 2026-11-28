@@ -10,6 +10,7 @@ on:
       - 'tools/gpu-launch-session.py'
       - 'tools/azeezos-2-native-integer.py'
       - 'tools/azeezos-2-region.py'
+      - 'tools/azeezos-2-magazines.py'
       - 'usb-sd2'
       - 'tools/mgba-gles-preview.py'
       - 'tools/azeezos-2-ds-expanded.py'
@@ -147,6 +148,7 @@ jobs:
           install -D -m 0644 vb-component/THIRD-PARTY-NOTICES.md rootfs/usr/share/licenses/vboycolor/THIRD-PARTY-NOTICES.md
           cp vb-component/vboycolor-corresponding-source.tar.gz out/
           python3 tools/gpu-launch-session.py rootfs
+          python3 tools/azeezos-2-magazines.py --rootfs rootfs
           install -m 0755 usb-sd2 rootfs/usr/libexec/banana/usb-sd2
           sh -n rootfs/usr/libexec/banana/usb-sd2
           cmp usb-sd2 rootfs/usr/libexec/banana/usb-sd2
@@ -189,6 +191,9 @@ jobs:
           grep -Fq 'VBoy Color (Azeez)' /tmp/ui-strings
           grep -Fq 'BIOS folder' /tmp/ui-strings
           grep -Fq 'Game sort' /tmp/ui-strings
+          grep -Fq 'Magazines  |  Page' /tmp/ui-strings
+          grep -Fxq '[magazines]' rootfs/etc/banana/systems.conf
+          test -s rootfs/usr/share/banana/magazines/README.txt
           grep -Fq 'Sort every console by title, region, genre, developer or publisher.' /tmp/ui-strings
           grep -Fq 'core.virtualboy = mednafen_vb' rootfs/usr/libexec/banana/azeez-updated-core-defaults
           grep -Fq 'setting bios_folder' rootfs/usr/libexec/banana/run-retroarch
