@@ -41,6 +41,8 @@ for f in "${files[@]}"; do
   mkdir -p "component-output/$(dirname "$f")"
   cp -a "$target/$f" "component-output/$f"
 done
+# Strip only non-runtime PPSSPP debugger metadata excluded by artifact upload.
+rm -f component-output/usr/share/banana/PPSSPP/debugger/.git component-output/usr/share/banana/PPSSPP/debugger/.nojekyll
 git rev-parse HEAD > component-output/SOURCE-COMMIT
 (cd component-output; find usr -type f -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS; sha256sum -c SHA256SUMS)
 echo "Development binaries only: not a firmware update. Hardware validation required." > component-output/README.txt

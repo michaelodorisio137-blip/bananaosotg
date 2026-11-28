@@ -1,0 +1,185 @@
+name: AzeezOS immediate OTA recovery (reuse compiled components)
+on:
+  workflow_dispatch:
+  push:
+    branches: [azeezos-2.0]
+    paths:
+      - '.github/workflows/recover-azeezos-combined-ota.yml'
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: azeezos-2-ota-publish
+  cancel-in-progress: false
+jobs:
+  publish:
+    permissions:
+      contents: write
+      actions: read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_RUN: '46091138816'
+      SOURCE_SHA: fdcc748296854470e05123a756cbc2f690518482
+      GH_REPO: michaelodorisio137-blip/bananaosotg
+      BASE_RUN: '46055572166'
+      BASE_VERSION: 2.0.0-dev.46055572166
+      BASE_SHA: 73ed1c154ce0c3802975877a9f3688236f291ed2
+      BUILD_RUN: '46061772616'
+      BUILD_SHA: 2ffcf8104f159ca89b18507792e21f28bf713a90
+      VALIDATION_SHA: 77a4fce2041e1f0495763d607a9cd9f0d8d50265
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fdcc748296854470e05123a756cbc2f690518482
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify source provenance and download exact successful builds
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code "$VALIDATION_SHA" "$BUILD_SHA" -- tools/azeezos-2-ds-expanded.py tools/azeezos-2-bananads-filter.py
+          git diff --name-only "$BASE_SHA" "$BUILD_SHA" -- tools | sort > /tmp/actual-diff
+          printf '%s\n' tools/azeezos-2-ds-expanded.py tools/azeezos-2-native-integer.py | sort > /tmp/expected-diff
+          diff -u /tmp/expected-diff /tmp/actual-diff
+          for spec in "$BASE_RUN:$BASE_SHA" "$BUILD_RUN:$BUILD_SHA" "46061772637:$BUILD_SHA" "46061758622:$VALIDATION_SHA"; do
+            gh api "repos/$GH_REPO/actions/runs/${spec%:*}" --jq '.conclusion + " " + .head_sha' | grep -Fx "success ${spec#*:}"
+          done
+          mkdir -p base components original out
+          gh run download "$BASE_RUN" -n AzeezOS-DS-Renderer-OTA -D base
+          gh run download "$BUILD_RUN" -n "AzeezOS-Component-Binaries-$BUILD_RUN" -D components
+          test "$(cat components/SOURCE-COMMIT)" = "$BUILD_SHA"
+          (cd base; sha256sum -c SHA256SUMS-rgds.txt)
+          (cd components; sha256sum -c SHA256SUMS)
+          for bin in components/usr/bin/banana-ui components/usr/bin/bananads; do
+            test -s "$bin"
+            readelf -h "$bin" | grep -q AArch64
+          done
+          tar -xf "base/banana-rgds-$BASE_VERSION.update.tar" -C original
+          mapfile -t roots < <(find original -type f -name rootfs.squashfs)
+          test "${#roots[@]}" -eq 1
+          dir=$(dirname "${roots[0]}")
+          test "$(cat "$dir/board")" = rgds
+          test "$(cat "$dir/VERSION")" = "$BASE_VERSION"
+          (cd "$dir"; sha256sum -c sha256sums)
+          printf '%s\n' "$dir" > /tmp/ota-dir
+      - name: Reuse exact successful component jobs
+        run: |
+          set -euo pipefail
+          gh api "repos/$GH_REPO/actions/runs/$SOURCE_RUN" --jq '.head_sha' | grep -Fx "$SOURCE_SHA"
+          gh api "repos/$GH_REPO/actions/runs/$SOURCE_RUN/jobs?per_page=100" --jq '.jobs[] | select(.conclusion=="success") | .name' > /tmp/passed-jobs
+          for name in 'gba / build' 'nes / build' 'ui / build'; do grep -Fx "$name" /tmp/passed-jobs; done
+          gh run download "$SOURCE_RUN" -n mgba-gles-preview-rgds -D gba-component
+          gh run download "$SOURCE_RUN" -n NES-exterior-seam-RGDS -D nes-component
+          gh run download "$SOURCE_RUN" -n "AzeezOS-Component-Binaries-$SOURCE_RUN" -D ui-component
+          # GitHub's uploader intentionally dropped these two hidden web debugger metadata files.
+          # Remove only their exact manifest entries; every remaining asset must pass checksum.
+          cd ui-component
+          test ! -e usr/share/banana/PPSSPP/debugger/.git
+          test ! -e usr/share/banana/PPSSPP/debugger/.nojekyll
+          sed -i -e '/  usr\/share\/banana\/PPSSPP\/debugger\/\.git$/d' -e '/  usr\/share\/banana\/PPSSPP\/debugger\/\.nojekyll$/d' SHA256SUMS
+      - name: Verify new component provenance and checksums
+        run: |
+          set -euo pipefail
+          test "$(cat gba-component/SOURCE-COMMIT)" = "$SOURCE_SHA"
+          test "$(cat nes-component/SOURCE-COMMIT)" = "$SOURCE_SHA"
+          (cd gba-component; sha256sum -c SHA256SUMS)
+          (cd nes-component; sha256sum -c SHA256SUMS)
+          test "$(cat ui-component/SOURCE-COMMIT)" = "$SOURCE_SHA"
+          (cd ui-component; sha256sum -c SHA256SUMS)
+          readelf -h ui-component/usr/bin/banana-ui | grep -q AArch64
+          readelf -h gba-component/mgba_gles_preview_libretro.so | grep -q AArch64
+          readelf -h nes-component/usr/lib/libretro/fceumm_libretro.so | grep -q AArch64
+      - name: Preserve baseline and install combined component binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y squashfs-tools
+          dir=$(cat /tmp/ota-dir)
+          unsquashfs -d rootfs "$dir/rootfs.squashfs"
+          test "$(cat rootfs/etc/banana/version)" = "$BASE_VERSION"
+          install -m 0755 components/usr/bin/bananads rootfs/usr/bin/bananads
+          install -m 0755 ui-component/usr/bin/banana-ui rootfs/usr/bin/banana-ui
+          install -m 0755 ui-component/usr/bin/bananafront rootfs/usr/bin/bananafront
+          install -m 0644 ui-component/usr/lib/libretro/ppsspp_azeez_libretro.so rootfs/usr/lib/libretro/ppsspp_azeez_libretro.so
+          cp -a ui-component/usr/share/banana/PPSSPP/. rootfs/usr/share/banana/PPSSPP/
+          cmp ui-component/usr/lib/libretro/ppsspp_azeez_libretro.so rootfs/usr/lib/libretro/ppsspp_azeez_libretro.so
+          cmp ui-component/usr/bin/bananafront rootfs/usr/bin/bananafront
+          strings rootfs/usr/bin/bananafront > /tmp/front-strings
+          grep -Fq /run/banana/az-reflect-frame /tmp/front-strings
+          install -m 0644 gba-component/mgba_gles_preview_libretro.so rootfs/usr/lib/libretro/mgba_gles_preview_libretro.so
+          install -m 0644 nes-component/usr/lib/libretro/fceumm_libretro.so rootfs/usr/lib/libretro/fceumm_libretro.so
+          python3 tools/gpu-launch-session.py rootfs
+          cmp gba-component/mgba_gles_preview_libretro.so rootfs/usr/lib/libretro/mgba_gles_preview_libretro.so
+          cmp nes-component/usr/lib/libretro/fceumm_libretro.so rootfs/usr/lib/libretro/fceumm_libretro.so
+          sh -n rootfs/usr/libexec/banana/run-retroarch
+          grep -Fq '/data/banana/launch-logs/$BANANA_SYSTEM.log' rootfs/usr/libexec/banana/run-retroarch
+          grep -Fq 'auto_overrides_enable = "false"' rootfs/usr/libexec/banana/run-retroarch
+          cat > rootfs/usr/share/banana/GBA-GPU-PREVIEW.txt <<'EOF'
+          Experimental GBA GPU exterior: 320x240 logical, 640x480 output.
+          Select mGBA Hardware (GLES3 Preview) in Settings > Other systems > Emulators > Game Boy Advance.
+          Alternatively enable by creating /data/banana/gba-gpu.enable (empty file).
+          Remove marker to restore the existing software core.
+          Optional live engine trace: create /data/banana/gba-3d-trace.enable containing tgr or mtm.
+          Output: /data/banana/gba-3d-trace.csv. Remove marker after capture.
+          This records candidate routine entry/return registers and RAM, NOT a working 3D polygon replacement.
+          EOF
+          for core in yabasanshiro ppsspp_azeez mgba_gles_preview fceumm; do
+            binary="rootfs/usr/lib/libretro/${core}_libretro.so"
+            readelf -h "$binary" | grep -q AArch64
+            while IFS= read -r needed; do
+              if ! find rootfs/lib rootfs/usr/lib -name "$needed" -print -quit | grep -q .; then
+                echo "Missing runtime library: $core -> $needed" >&2
+                exit 1
+              fi
+            done < <(readelf -d "$binary" | sed -n 's/.*Shared library: \[\(.*\)\]/\1/p')
+          done
+          test -s rootfs/usr/share/banana/PPSSPP/compat.ini
+          sh -n rootfs/usr/libexec/banana/run-bananads
+          cmp components/usr/bin/bananads rootfs/usr/bin/bananads
+          cmp ui-component/usr/bin/banana-ui rootfs/usr/bin/banana-ui
+          strings rootfs/usr/bin/bananads > /tmp/ds-strings
+          strings rootfs/usr/bin/banana-ui > /tmp/ui-strings
+          grep -Fq 'DS 3D requested scale=' /tmp/ds-strings
+          grep -Fq 'expanded 3D raster:' /tmp/ds-strings
+          grep -Fq 'render.expanded_scale' /tmp/ds-strings
+          grep -Fq 'azeez_idle_reflection' /tmp/ui-strings
+          grep -Fq 'mGBA Hardware (GLES3 Preview)' /tmp/ui-strings
+          grep -Fq 'Azeez reflection: capture active' /tmp/ui-strings
+          grep -Fq 'Expanded 3D resolution' /tmp/ui-strings
+          grep -Fq '320x240 (Native)' /tmp/ui-strings
+          grep -Fq '640x480 (HD)' /tmp/ui-strings
+          VERSION="2.0.0-dev.$GITHUB_RUN_ID"
+          printf '%s\n' "$VERSION" > rootfs/etc/banana/version
+          printf '%s\n' "$VERSION" > "$dir/VERSION"
+          rm "$dir/rootfs.squashfs"
+          mksquashfs rootfs "$dir/rootfs.squashfs" -comp xz -b 131072 -noappend -processors 4
+          test "$(unsquashfs -cat "$dir/rootfs.squashfs" etc/banana/version)" = "$VERSION"
+          (cd "$dir"; sha256sum Image *.dtb rootfs.squashfs > sha256sums; sha256sum -c sha256sums)
+          tar -cf "out/banana-rgds-$VERSION.update.tar" -C original "$(basename "$dir")"
+          (cd out; sha256sum *.update.tar > SHA256SUMS-rgds.txt; sha256sum -c SHA256SUMS-rgds.txt)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AzeezOS-Combined-GPU-OTA
+          path: out/*
+          compression-level: 0
+          if-no-files-found: error
+      - name: Publish checksum-verified development OTA
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="2.0.0-dev.$GITHUB_RUN_ID"
+          FILE="banana-rgds-$VERSION.update.tar"
+          TAG="v$VERSION"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" "out/$FILE" out/SHA256SUMS-rgds.txt --target "$SOURCE_SHA" --title "AzeezOS RG DS 2.0 combined GPU development preview" --notes "Preserves existing DS renderer and software mGBA cores; includes NES scanline seam repair, optional GLES3 expanded GBA core with candidate CRIS routine capture, dynamic installed core selection, explicit core priority, PPSSPP buffered renderer and Saturn GPU launch isolation, and producer-side BananaFront idle reflection with linear scanout fallback. No live 3D polygon replacement yet. Hardware functionality and speed unverified. Prior OTA preserved. Repackaged from successful component jobs of run 46091138816." --prerelease --draft
+          fi
+          mkdir -p verify
+          gh release download "$TAG" --pattern "$FILE" --pattern SHA256SUMS-rgds.txt --dir verify
+          cmp "out/$FILE" "verify/$FILE"
+          cmp out/SHA256SUMS-rgds.txt verify/SHA256SUMS-rgds.txt
+          (cd verify; sha256sum -c SHA256SUMS-rgds.txt)
+          gh release edit "$TAG" --draft=false --prerelease
+          gh release view "$TAG" --json tagName,isDraft,isPrerelease,assets,url
