@@ -40,8 +40,13 @@ case "$BANANA_SYSTEM" in
 esac
 [ "$AZ_GBA_GPU" = 1 ] && CORE=/usr/lib/libretro/mgba_gles_preview_libretro.so
 [ -f "$CORE" ] || { echo "no core $1" >&2; exit 1; }""")
+rep('CFG=/data/retroarch/retroarch.cfg', '''# Preserve the selected GPU core after Native Integer routing.
+if [ "$AZ_GBA_GPU" = 1 ]; then
+    CORE=/usr/lib/libretro/mgba_gles_preview_libretro.so
+fi
+CFG=/data/retroarch/retroarch.cfg''')
 rep("BKEYS='^(video_shader_enable|video_smooth|",
-    "BKEYS='^(video_driver|video_context_driver|video_threaded|video_max_swapchain_images|crt_switch_resolution|video_shader_enable|video_smooth|")
+    "BKEYS='^(video_driver|video_context_driver|video_threaded|video_max_swapchain_images|crt_switch_resolution|auto_overrides_enable|video_shader_enable|video_smooth|")
 anchor="# anything RetroArch keeps that retroarch.cfg doesn't place"
 rep(anchor, """# Azeez GPU session settings. Reuse the existing crash-safe config backup.
 # No changes to the user's global driver, CRT, or integer-scaling preferences.
@@ -58,6 +63,7 @@ video_context_driver = "kms"
 video_threaded = "false"
 video_max_swapchain_images = "3"
 crt_switch_resolution = "0"
+auto_overrides_enable = "false"
 video_shader_enable = "false"
 video_smooth = "false"
 video_scale_integer = "false"
@@ -78,6 +84,34 @@ for system,core in (("saturn","yabasanshiro"),("psp","ppsspp_azeez")):
     m=re.search(r"(?m)^\["+system+r"\]\n((?:(?!^\[)[\s\S])*)",conf)
     if not m or ("run = /usr/libexec/banana/run-retroarch "+core+" %ROM%") not in m[1]:
         raise SystemExit("Missing or incorrect menu launcher: "+system)
+# Retain diagnostics locally for GPU launches (including early failures).
+rep('MON=$(sed -n', r'''AZ_GPU_LOG=
+case "$BANANA_SYSTEM:$AZ_GBA_GPU" in
+saturn:*|psp:*|gba:1)
+    mkdir -p /data/banana/launch-logs /run/banana
+    AZ_GPU_LOG=/data/banana/launch-logs/$BANANA_SYSTEM.log
+    rm -f /run/banana/retroarch.log
+    printf '%s\n' "core=$CORE" "system=$BANANA_SYSTEM" > "$AZ_GPU_LOG"
+    if [ "$BANANA_SYSTEM" = saturn ]; then
+        grep '^system_directory = ' "$CFG" >> "$AZ_GPU_LOG" || :
+        for bios in saturn_bios.bin sega_101.bin mpr-17933.bin; do
+            [ ! -f "/data/bios/$bios" ] || ls -l "/data/bios/$bios" >> "$AZ_GPU_LOG"
+        done
+    fi
+    ;;
+esac
+MON=$(sed -n''')
+rep('    retroarch --config $CFG --appendconfig "$L|$RA$RBA$BA" -L "$CORE" "$2" < $FIFO &',
+    '''    if [ -n "$AZ_GPU_LOG" ]; then
+        retroarch --config $CFG --appendconfig "$L|$RA$RBA$BA" --verbose --log-file /run/banana/retroarch.log -L "$CORE" "$2" < $FIFO >> "$AZ_GPU_LOG" 2>&1 &
+    else
+        retroarch --config $CFG --appendconfig "$L|$RA$RBA$BA" -L "$CORE" "$2" < $FIFO &
+    fi''')
+rep('/usr/libexec/banana/ra-secrets scrub; rm -f $RA', r'''if [ -n "$AZ_GPU_LOG" ]; then
+    [ ! -f /run/banana/retroarch.log ] || tail -c 262144 /run/banana/retroarch.log >> "$AZ_GPU_LOG"
+    printf 'exit=%s\n' "$S" >> "$AZ_GPU_LOG"
+fi
+/usr/libexec/banana/ra-secrets scrub; rm -f $RA''')
 p.write_text(s)
 subprocess.run(["sh","-n",str(p)],check=True)
 print("PASS: Saturn and PSP GPU launcher isolation, packaged core and menu checks")
