@@ -17,7 +17,7 @@ rep("settings.cpp",'{ "gpsp", "gpSP" },',
 rep("settings.cpp",'\t};\n\tstatic bool coreInstalled(const std::string& core)',r'''
         { "saturn", "Sega Saturn", { { "yabasanshiro", "YabaSanshiro" }, { "mednafen_saturn", "Beetle Saturn" }, { "yabause", "Yabause" }, { "kronos", "Kronos" } } },
         { "psp", "PlayStation Portable", { { "ppsspp_azeez", "PPSSPP Azeez 4:3" }, { "ppsspp", "PPSSPP" } } },
-        { "virtualboy", "Virtual Boy", { { "mednafen_vb", "Beetle VB" } } },
+        { "virtualboy", "Virtual Boy", { { "vboycolor", "VBoy Color (Azeez)" }, { "mednafen_vb", "Beetle VB (original / expanded)" } } },
         { "pcengine", "PC Engine", { { "mednafen_pce_fast", "Beetle PCE Fast" } } },
         { "ngpc", "Neo Geo Pocket Color", { { "mednafen_ngp", "Beetle NGP" } } },
     };

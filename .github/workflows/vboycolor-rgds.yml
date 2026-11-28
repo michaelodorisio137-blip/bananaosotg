@@ -1,0 +1,42 @@
+name: VBoy Color RG DS core
+on:
+  workflow_call:
+  workflow_dispatch:
+  push:
+    branches: [azeezos-2.0]
+    paths:
+      - '.github/workflows/vboycolor-rgds.yml'
+      - 'tools/vboycolor-rgds.sh'
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: yuk27/VBoyColor
+          ref: 9d1e5178a913d7244cd8d9ae0c3054f79915fc62
+          path: vboycolor-src
+          submodules: recursive
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: JorreFog/BananaLinux
+          ref: 54123092f4cb8195d01b82ad12c880d35de059d0
+          path: BananaLinux
+          persist-credentials: false
+      - name: Build and verify native and RG DS color cores
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y build-essential bc bison flex libssl-dev libelf-dev unzip rsync cpio file wget python3-dev swig libgnutls28-dev cmake
+          bash tools/vboycolor-rgds.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VBoyColor-RGDS
+          path: vboycolor-out/
+          if-no-files-found: error

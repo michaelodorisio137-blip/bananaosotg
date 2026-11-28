@@ -16,6 +16,7 @@ rep("case $BANANA_SYSTEM in\nn64|psx|saturn|psp|\"\") ;;",
 case "$1" in
     yabasanshiro) BANANA_SYSTEM=saturn ;;
     ppsspp|ppsspp_azeez) BANANA_SYSTEM=psp ;;
+    vboycolor|mednafen_vb) BANANA_SYSTEM=virtualboy ;;
 esac
 export BANANA_SYSTEM
 AZ_SELECTED=$(setting "core.$BANANA_SYSTEM")
@@ -40,7 +41,7 @@ if [ "$BANANA_SYSTEM" = gba ] && [ -s /usr/lib/libretro/mgba_gles_preview_libret
     fi
 fi
 case "$BANANA_SYSTEM:$AZ_GBA_GPU:$AZ_OTHER" in
-n64:*|psx:*|saturn:*|psp:*|:*|gba:1:*|*:*:1) ;;""")
+n64:*|psx:*|saturn:*|psp:*|virtualboy:*|:*|gba:1:*|*:*:1) ;;""")
 # Explicitly select the packaged GPU cores; preserve downloaded alternative if
 # the Saturn core is absent. Do not alter unrelated core settings.
 rep('[ -f "$CORE" ] || { echo "no core $1" >&2; exit 1; }',
@@ -53,6 +54,8 @@ case "$BANANA_SYSTEM" in
         done ;;
     psp)
         [ -s /usr/lib/libretro/ppsspp_azeez_libretro.so ] && CORE=/usr/lib/libretro/ppsspp_azeez_libretro.so ;;
+    virtualboy)
+        [ -s /usr/lib/libretro/vboycolor_libretro.so ] && CORE=/usr/lib/libretro/vboycolor_libretro.so ;;
 esac
 else
     CORE="$AZ_CHOSEN"
@@ -168,6 +171,12 @@ trap 'rm -f "$tmp"' EXIT HUP INT TERM
 # Preserve all unrelated settings and per-game overrides.
 awk '!/^[ \t]*(nds_emulator|core[.]gba)[ \t]*=/' "$C" > "$tmp"
 printf '%s\n' 'nds_emulator = bananads' 'core.gba = mgba_gles_preview' >> "$tmp"
+# Default to color only when the new core is actually installed.
+if [ -s /usr/lib/libretro/vboycolor_libretro.so ]; then
+    awk '!/^[ \t]*core[.]virtualboy[ \t]*=/' "$tmp" > "$tmp.vb"
+    printf '%s\n' 'core.virtualboy = vboycolor' >> "$tmp.vb"
+    mv "$tmp.vb" "$tmp"
+fi
 chmod 0644 "$tmp"
 mv "$tmp" "$C"
 printf '%s\n' "$V" > "$M.new"
