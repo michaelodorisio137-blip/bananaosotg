@@ -9,8 +9,9 @@ def rep(rel,a,b):
     if s.count(a)!=1:raise SystemExit("reflection anchor mismatch: "+rel+" "+repr(a))
     p.write_text(s.replace(a,b,1))
 # Expose the distinct hardware core through the existing per-system core selector.
-rep("settings.cpp",'{ "mgba", "mGBA" }, { "bananagba", "BananaGBA" }',
-    '{ "mgba", "mGBA" }, { "mgba_gles_preview", "mGBA Hardware (GLES3 Preview)" }, { "bananagba", "BananaGBA" }')
+# Anchor the existing GBA-specific gpSP entry, preserving default ordering.
+rep("settings.cpp",'{ "gpsp", "gpSP" },',
+    '{ "gpsp", "gpSP" }, { "mgba_gles_preview", "mGBA Hardware (GLES3 Preview)" },')
 rep("kms.h","int leasedScreen() const { return leased; }",
     """int leasedScreen() const { return leased; }
         // Read an existing linear scanout; no new emulator frame or GL readback.
