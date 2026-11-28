@@ -1,0 +1,106 @@
+name: AzeezOS audio-preserving OTA
+on:
+  workflow_dispatch:
+  push:
+    branches: [azeezos-2.0]
+    paths:
+      - '.github/workflows/publish-azeezos-audio-ota.yml'
+      - 'rgds-audio-patch.py'
+      - 'rgds-boot-patch.py'
+      - 'tools/stack-challenge/approved-menu-cues.json'
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: azeezos-2-ota-publish
+  cancel-in-progress: false
+jobs:
+  ui:
+    uses: ./.github/workflows/azeezos-2-components.yml
+    with:
+      component: ui
+    permissions:
+      contents: read
+  publish:
+    needs: ui
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: michaelodorisio137-blip/bananaosotg
+      BASE: 2.0.0-dev.46121875386
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: AzeezOS-Component-Binaries-${{ github.run_id }}
+          path: ui
+      - name: Verify and preserve last successful combined firmware
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(cat ui/SOURCE-COMMIT)" = "$GITHUB_SHA"
+          (cd ui; sha256sum -c SHA256SUMS)
+          readelf -h ui/usr/bin/banana-ui | grep -q AArch64
+          sudo apt-get update -qq
+          sudo apt-get install -y squashfs-tools
+          mkdir -p base original out
+          gh release download "v$BASE" --pattern "*.update.tar" --pattern SHA256SUMS-rgds.txt --pattern vboycolor-corresponding-source.tar.gz --dir base
+          (cd base; sha256sum -c SHA256SUMS-rgds.txt)
+          tar -xf "base/banana-rgds-$BASE.update.tar" -C original
+          mapfile -t roots < <(find original -name rootfs.squashfs -type f)
+          test "${#roots[@]}" -eq 1
+          dir=$(dirname "${roots[0]}")
+          test "$(cat "$dir/board")" = rgds
+          test "$(cat "$dir/VERSION")" = "$BASE"
+          (cd "$dir"; sha256sum -c sha256sums)
+          sudo unsquashfs -d rootfs "$dir/rootfs.squashfs"
+          test "$(cat rootfs/etc/banana/version)" = "$BASE"
+          # Only the UI binary and version may change. Record all other regular files.
+          sudo sh -c 'cd rootfs; find . -type f ! -path ./usr/bin/banana-ui ! -path ./etc/banana/version -print0 | sort -z | xargs -0 sha256sum' > /tmp/baseline-files
+          sudo install -m 0755 ui/usr/bin/banana-ui rootfs/usr/bin/banana-ui
+          cmp ui/usr/bin/banana-ui rootfs/usr/bin/banana-ui
+          strings rootfs/usr/bin/banana-ui > /tmp/ui-strings
+          for marker in '/data/banana/stack-challenge/' 'move.wav' 'line-clear.wav' 'azeez_idle_reflection' 'Expanded 3D camera' 'VBoy Color (Azeez)' 'Game sort' 'BIOS folder' 'mGBA Hardware (GLES3 Preview) - Azeez'; do
+            grep -Fq "$marker" /tmp/ui-strings
+          done
+          if grep -Fxq stack-launch /tmp/ui-strings; then echo 'Unexpected loading chime hook'; exit 1; fi
+          python3 -c 'import json; d=json.load(open("tools/stack-challenge/approved-menu-cues.json")); assert d["loading"]["status"]=="disabled"; assert d["movement"]["source"]=="left-3.wav"; assert d["selection"]["source"]=="down-8.wav"'
+          VERSION="2.0.0-dev.$GITHUB_RUN_ID"
+          printf '%s\n' "$VERSION" | sudo tee rootfs/etc/banana/version >/dev/null
+          printf '%s\n' "$VERSION" > "$dir/VERSION"
+          sudo sh -c 'cd rootfs; sha256sum -c /tmp/baseline-files --quiet'
+          rm "$dir/rootfs.squashfs"
+          sudo mksquashfs rootfs "$dir/rootfs.squashfs" -comp xz -b 131072 -noappend -processors 4
+          sudo chown "$(id -u):$(id -g)" "$dir/rootfs.squashfs"
+          test "$(unsquashfs -cat "$dir/rootfs.squashfs" etc/banana/version)" = "$VERSION"
+          unsquashfs -cat "$dir/rootfs.squashfs" usr/bin/banana-ui | cmp ui/usr/bin/banana-ui -
+          (cd "$dir"; sha256sum Image *.dtb rootfs.squashfs > sha256sums; sha256sum -c sha256sums)
+          tar -cf "out/banana-rgds-$VERSION.update.tar" -C original "$(basename "$dir")"
+          cp base/vboycolor-corresponding-source.tar.gz out/
+          (cd out; sha256sum *.update.tar vboycolor-corresponding-source.tar.gz > SHA256SUMS-rgds.txt; sha256sum -c SHA256SUMS-rgds.txt)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AzeezOS-Audio-OTA
+          path: out/*
+          compression-level: 0
+          if-no-files-found: error
+      - name: Publish verified development OTA
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="2.0.0-dev.$GITHUB_RUN_ID"
+          FILE="banana-rgds-$VERSION.update.tar"
+          TAG="v$VERSION"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" "out/$FILE" out/vboycolor-corresponding-source.tar.gz out/SHA256SUMS-rgds.txt --target "$GITHUB_SHA" --title "AzeezOS RG DS 2.0 audio-preserving development preview" --notes "Preserves the combined GPU/NES/VBoy firmware components from $BASE. Updates the integrated UI for user-local movement and selection WAVs, with the separate loading chime disabled. WAVs must be installed locally at /data/banana/stack-challenge/move.wav and line-clear.wav; not bundled. Hardware and final startup cinematic remain unverified." --prerelease --draft
+          fi
+          mkdir -p verify
+          gh release download "$TAG" --pattern "$FILE" --pattern vboycolor-corresponding-source.tar.gz --pattern SHA256SUMS-rgds.txt --dir verify
+          cmp "out/$FILE" "verify/$FILE"
+          cmp out/SHA256SUMS-rgds.txt verify/SHA256SUMS-rgds.txt
+          (cd verify; sha256sum -c SHA256SUMS-rgds.txt)
+          gh release edit "$TAG" --draft=false --prerelease
+          gh release view "$TAG" --json tagName,isDraft,isPrerelease,assets,url
