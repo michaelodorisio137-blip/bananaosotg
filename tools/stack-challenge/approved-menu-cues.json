@@ -1,0 +1,17 @@
+{
+  "selection": {
+    "source": "down-8.wav",
+    "capture_run": 46121892659,
+    "artifact": 15253814057,
+    "pcm_sha256": "378791eca6cfaf92290918e0c164ae8dd8fb8c037532d178564f056b47851d5e",
+    "rate": 48000,
+    "channels": 1,
+    "samples": 26193,
+    "install_path": "/data/banana/stack-challenge/line-clear.wav",
+    "approval": "User explicitly selected this clip; single-line-clear event identity not independently verified."
+  },
+  "loading": {
+    "status": "awaiting user-approved Tetris cue",
+    "install_path": "/data/banana/stack-challenge/tetris.wav"
+  }
+}
