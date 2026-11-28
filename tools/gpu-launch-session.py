@@ -73,6 +73,31 @@ fi
 CFG=/data/retroarch/retroarch.cfg''')
 rep("BKEYS='^(video_shader_enable|video_smooth|",
     "BKEYS='^(video_driver|video_context_driver|video_threaded|video_max_swapchain_images|crt_switch_resolution|auto_overrides_enable|system_directory|video_shader_enable|video_smooth|")
+# Enforce the same threaded-video policy in the default and existing configs.
+template=root/"etc/banana/retroarch.cfg"
+tc=template.read_text()
+tc=re.sub(r'(?m)^[ \t]*video_threaded[ \t]*=.*\n?', '', tc)
+template.write_text(tc.rstrip()+"\nvideo_threaded = \"true\"\n")
+rep("# anything RetroArch keeps that retroarch.cfg doesn't place", r'''# AzeezOS: keep RetroArch threaded video enabled across launches and exits.
+az_threaded_cfg() {
+    [ -f "$1" ] || return 0
+    if [ "$(grep -Ec '^[[:space:]]*video_threaded[[:space:]]*=' "$1" || :)" = 1 ] &&
+       grep -qxF 'video_threaded = "true"' "$1"; then return 0; fi
+    sed -i -E '/^[[:space:]]*video_threaded[[:space:]]*=/d' "$1" &&
+        printf '%s\n' 'video_threaded = "true"' >> "$1"
+}
+az_threaded_cfg "$CFG" || exit 1
+# Preserve every unrelated core/game override setting.
+if [ -d /data/retroarch/config ]; then
+    find /data/retroarch/config -type f -name '*.cfg' | while IFS= read -r az_cfg; do
+        if grep -Eq '^[[:space:]]*video_threaded[[:space:]]*=' "$az_cfg"; then
+            az_threaded_cfg "$az_cfg" || exit 1
+        fi
+    done || exit 1
+fi
+# anything RetroArch keeps that retroarch.cfg doesn't place''')
+rep('sync    # (the slot, save folder and hotkeys are back on the card before the menu returns)',
+    'az_threaded_cfg "$CFG" || echo "AzeezOS: could not persist threaded video" >&2\nsync    # (the slot, save folder and hotkeys are back on the card before the menu returns)')
 anchor="# anything RetroArch keeps that retroarch.cfg doesn't place"
 rep(anchor, """# Azeez GPU session settings. Reuse the existing crash-safe config backup.
 # No changes to the user's global driver, CRT, or integer-scaling preferences.
@@ -102,7 +127,7 @@ saturn:*|psp:*|gba:1:*|*:*:1)
     cat > "$BCFG" <<'AZ_GPU'
 video_driver = "gl"
 video_context_driver = "kms"
-video_threaded = "false"
+video_threaded = "true"
 video_max_swapchain_images = "3"
 crt_switch_resolution = "0"
 auto_overrides_enable = "false"
@@ -149,7 +174,7 @@ if [ "$BANANA_SYSTEM" = n64 ] && [ "${CORE##*/}" = mupen64plus_next_libretro.so 
         mv "$BKEEP.new" "$BKEEP" && sync
         : > "$BCFG"
     fi
-    printf '%s\\n' 'video_max_swapchain_images = "3"' 'video_threaded = "false"' 'crt_switch_resolution = "0"' >> "$BCFG"
+    printf '%s\\n' 'video_max_swapchain_images = "3"' 'video_threaded = "true"' 'crt_switch_resolution = "0"' >> "$BCFG"
     BA="|$BCFG"
 fi
 # Shared system directory for every RetroArch core.
