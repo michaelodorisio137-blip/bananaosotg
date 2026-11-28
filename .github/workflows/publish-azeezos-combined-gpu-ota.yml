@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/publish-azeezos-combined-gpu-ota.yml'
       - 'tools/azeezos-2-idle-reflection.py'
+      - 'tools/azeezos-reflection-producer.py'
       - 'tools/gpu-launch-session.py'
 permissions:
   contents: write
@@ -25,7 +26,7 @@ jobs:
   ui:
     uses: ./.github/workflows/azeezos-2-components.yml
     with:
-      component: ui
+      component: ui-reflection
     permissions:
       contents: read
   publish:
@@ -110,6 +111,10 @@ jobs:
           test "$(cat rootfs/etc/banana/version)" = "$BASE_VERSION"
           install -m 0755 components/usr/bin/bananads rootfs/usr/bin/bananads
           install -m 0755 ui-component/usr/bin/banana-ui rootfs/usr/bin/banana-ui
+          install -m 0755 ui-component/usr/bin/bananafront rootfs/usr/bin/bananafront
+          cmp ui-component/usr/bin/bananafront rootfs/usr/bin/bananafront
+          strings rootfs/usr/bin/bananafront > /tmp/front-strings
+          grep -Fq /run/banana/az-reflect-frame /tmp/front-strings
           install -m 0644 gba-component/mgba_gles_preview_libretro.so rootfs/usr/lib/libretro/mgba_gles_preview_libretro.so
           install -m 0644 nes-component/usr/lib/libretro/fceumm_libretro.so rootfs/usr/lib/libretro/fceumm_libretro.so
           python3 tools/gpu-launch-session.py rootfs
@@ -175,7 +180,7 @@ jobs:
           FILE="banana-rgds-$VERSION.update.tar"
           TAG="v$VERSION"
           if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" "out/$FILE" out/SHA256SUMS-rgds.txt --target "$GITHUB_SHA" --title "AzeezOS RG DS 2.0 combined GPU development preview" --notes "Preserves existing DS renderer and software mGBA cores; includes NES scanline seam repair, optional GLES3 expanded GBA core with candidate CRIS routine capture, Saturn/PSP GPU launch isolation, and low-rate idle bottom-screen reflection on supported linear scanouts. No live 3D polygon replacement yet. Hardware functionality and speed unverified. Prior OTA preserved." --prerelease --draft
+            gh release create "$TAG" "out/$FILE" out/SHA256SUMS-rgds.txt --target "$GITHUB_SHA" --title "AzeezOS RG DS 2.0 combined GPU development preview" --notes "Preserves existing DS renderer and software mGBA cores; includes NES scanline seam repair, optional GLES3 expanded GBA core with candidate CRIS routine capture, Saturn/PSP GPU launch isolation, and producer-side BananaFront idle reflection with linear scanout fallback. No live 3D polygon replacement yet. Hardware functionality and speed unverified. Prior OTA preserved." --prerelease --draft
           fi
           mkdir -p verify
           gh release download "$TAG" --pattern "$FILE" --pattern SHA256SUMS-rgds.txt --dir verify

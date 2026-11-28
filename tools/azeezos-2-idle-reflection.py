@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Low-rate bottom-screen reflection of an existing linear KMS scanout."""
 from pathlib import Path
-import sys
-root=Path(sys.argv[1])/"ui/src"
+import sys, shutil
+base=Path(sys.argv[1])
+root=base/"ui/src"
 def rep(rel,a,b):
     p=root/rel;s=p.read_text()
     if b in s:return
@@ -126,16 +127,31 @@ rep("kms.cpp","\tint Display::lease(int s)",r"""
     }
 
 	int Display::lease(int s)""")
+# Install the pinned producer-side capture patch for BananaFront.
+pkg=base/"buildroot/package/bananafront"
+shutil.copyfile(Path(__file__).with_name("azeezos-reflection-producer.py"),pkg/"azeezos-reflection-producer.py")
+mk=pkg/"bananafront.mk"
+m=mk.read_text()
+a="define BANANAFRONT_BUILD_CMDS\n"
+assert m.count(a)==1
+mk.write_text(m.replace(a,a+"\tpython3 $(BR2_EXTERNAL_BANANA_PATH)/package/bananafront/azeezos-reflection-producer.py $(@D)\n",1))
 # Single-screen game panel only; existing idle timer and explicit off mode remain authoritative.
 rep("main.cpp","bool linkSeen = false, pipeWarned = false;",r"""bool linkSeen = false, pipeWarned = false;
-        bool azReflecting=false, azWakeTouch=false;
+        bool azReflecting=false, azWakeTouch=false, azRequestedReflection=false;
+        unlink("/run/banana/az-reflect-request");
+        unlink("/run/banana/az-reflect-frame");
         double azReflectionAt=0;
         const bool azReflectionEnabled=getConfValue(o.data+"/settings.conf","azeez_idle_reflection","on")!="off";
         rnds::TexPtr azReflection;
         auto azCaptureReflection=[&]() {
             constexpr int w=40,h=30;
             uint32_t src[w*h];
-            if(!disp.idleReflection(src,w,h))return false;
+            bool producer=false;
+            {
+                std::ifstream f("/run/banana/az-reflect-frame",std::ios::binary);
+                producer=bool(f.read(reinterpret_cast<char*>(src),sizeof src));
+            }
+            if(!producer && !disp.idleReflection(src,w,h))return false;
             rnds::Bitmap b;b.w=w;b.h=h;b.px.resize(w*h*4);
             // 3x3 low-resolution blur, with a darkening factor; backlight supplies the rest.
             for(int y=0;y<h;y++)for(int x=0;x<w;x++){
@@ -151,6 +167,12 @@ rep("main.cpp","bool linkSeen = false, pipeWarned = false;",r"""bool linkSeen = 
             return !!azReflection;
         };""")
 rep("main.cpp","\t\t\t\tif (want && !disp.flipPending())\n\t\t\t\t{\n\t\t\t\t\tsettingsView.gameRender();",r"""                const bool azIdle=azReflectionEnabled && panelScreen==1 && bottomIdle.dimmed && bottomIdle.percent>0;
+                if(azIdle && !azRequestedReflection){
+                    unlink("/run/banana/az-reflect-frame");
+                    std::ofstream("/run/banana/az-reflect-request") << "1\n";
+                    azRequestedReflection=true;azReflectionAt=0;
+                    logf("Azeez reflection: producer requested");
+                }
                 if(azIdle && t>=azReflectionAt && !disp.flipPending()){
                     bool captured=azCaptureReflection();
                     azReflectionAt=t+(captured?200:1500);
@@ -158,6 +180,11 @@ rep("main.cpp","\t\t\t\tif (want && !disp.flipPending())\n\t\t\t\t{\n\t\t\t\t\ts
                     else if(azReflecting){azReflecting=false;azReflection.reset();want=true;}
                 }
                 if(!azIdle){
+                    if(azRequestedReflection){
+                        unlink("/run/banana/az-reflect-request");
+                        unlink("/run/banana/az-reflect-frame");
+                        azRequestedReflection=false;
+                    }
                     if(azReflecting){azReflecting=false;azReflection.reset();want=true;}
                     azReflectionAt=0;
                 }
@@ -181,4 +208,7 @@ rep("main.cpp","\t\t\t\t\t\tbottomIdle.activity(nowMs());\n\t\t\t\t\t\tSettings:
 						Settings::GameAction a;""")
 rep("main.cpp","\t\t\t\t\t\t\tsettingsView.gameTouchMove(ev.x, ev.y);",
     "\t\t\t\t\t\t\tif(!azWakeTouch) settingsView.gameTouchMove(ev.x, ev.y);")
-print("Idle reflection integrated: 5 Hz, linear scanout only, no emulator modification.")
+rep("main.cpp","if (pidFd >= 0) ::close(pidFd);",r"""unlink("/run/banana/az-reflect-request");
+        unlink("/run/banana/az-reflect-frame");
+        if (pidFd >= 0) ::close(pidFd);""")
+print("Idle reflection integrated: 5 Hz producer tap plus linear scanout fallback.")
