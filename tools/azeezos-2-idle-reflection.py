@@ -8,6 +8,9 @@ def rep(rel,a,b):
     if b in s:return
     if s.count(a)!=1:raise SystemExit("reflection anchor mismatch: "+rel+" "+repr(a))
     p.write_text(s.replace(a,b,1))
+# Expose the distinct hardware core through the existing per-system core selector.
+rep("settings.cpp",'{ "mgba", "mGBA" }, { "bananagba", "BananaGBA" }',
+    '{ "mgba", "mGBA" }, { "mgba_gles_preview", "mGBA Hardware (GLES3 Preview)" }, { "bananagba", "BananaGBA" }')
 rep("kms.h","int leasedScreen() const { return leased; }",
     """int leasedScreen() const { return leased; }
         // Read an existing linear scanout; no new emulator frame or GL readback.
@@ -15,22 +18,28 @@ rep("kms.h","int leasedScreen() const { return leased; }",
 rep("kms.cpp","#include <xf86drmMode.h>",r"""#include <xf86drmMode.h>
 #include <drm_fourcc.h>
 #include <linux/dma-buf.h>
-#include <sys/ioctl.h>""")
+#include <sys/ioctl.h>
+#include <cstdio>""")
 rep("kms.cpp","\tint Display::lease(int s)",r"""
     bool Display::idleReflection(uint32_t* out,int w,int h)
     {
-        if(fd<0 || leased!=0 || !out || w<=0 || h<=0 || w>80 || h>60)return false;
+        auto fail=[](const char* why){
+            static const char* last=nullptr;
+            if(last!=why){fprintf(stderr,"Azeez reflection: %s\n",why);last=why;}
+            return false;
+        };
+        if(fd<0 || leased!=0 || !out || w<=0 || h<=0 || w>80 || h>60)return fail("top panel not leased or invalid dimensions");
         uint32_t plane=primaryPlane(fd,p[0].crtc);
-        if(!plane)return false;
+        if(!plane)return fail("no primary plane");
         drmModePlane* pl=drmModeGetPlane(fd,plane);
-        if(!pl)return false;
+        if(!pl)return fail("cannot read plane");
         uint32_t fbId=pl->crtc_id==p[0].crtc?pl->fb_id:0;
         drmModeFreePlane(pl);
-        if(!fbId)return false;
+        if(!fbId)return fail("no active top framebuffer");
         // Do not assume tiled/AFBC layouts or rotate a non-upright plane.
         uint64_t sx=0,sy=0,sw=0,sh=0,rot=DRM_MODE_ROTATE_0;
         auto props=drmModeObjectGetProperties(fd,plane,DRM_MODE_OBJECT_PLANE);
-        if(!props)return false;
+        if(!props)return fail("cannot read plane properties");
         for(unsigned i=0;i<props->count_props;i++){
             auto prop=drmModeGetProperty(fd,props->props[i]);
             if(!prop)continue;
@@ -43,12 +52,12 @@ rep("kms.cpp","\tint Display::lease(int s)",r"""
             drmModeFreeProperty(prop);
         }
         drmModeFreeObjectProperties(props);
-        if(rot!=DRM_MODE_ROTATE_0 || ((sx|sy|sw|sh)&65535))return false;
+        if(rot!=DRM_MODE_ROTATE_0 || ((sx|sy|sw|sh)&65535))return fail("non-upright or fractional source");
         sx>>=16;sy>>=16;sw>>=16;sh>>=16;
         drmModeFB2* f=drmModeGetFB2(fd,fbId);
-        if(!f)return false;
+        if(!f)return fail("GETFB2 unavailable");
         // GETFB2 returns new GEM handles: close every distinct handle, including on failure.
-        int dm=-1; bool ok=false;
+        int dm=-1; bool ok=false; const char* why="unsupported framebuffer layout";
         void* map=MAP_FAILED; size_t bytes=0; bool syncStarted=false;
         unsigned bpp=f->pixel_format==DRM_FORMAT_RGB565?2:
             (f->pixel_format==DRM_FORMAT_XRGB8888 || f->pixel_format==DRM_FORMAT_ARGB8888 ||
@@ -61,18 +70,29 @@ rep("kms.cpp","\tint Display::lease(int s)",r"""
                f->pitches[0]<(uint64_t)f->width*bpp)break;
             uint64_t end=(uint64_t)f->offsets[0]+(uint64_t)f->pitches[0]*f->height;
             if(!end || end>128u*1024u*1024u)break;
-            if(drmPrimeHandleToFD(fd,f->handles[0],DRM_CLOEXEC,&dm))break;
-            // Skip busy producers instead of intentionally waiting for a render fence.
-            pollfd pfd={dm,POLLIN,0};
-            if(poll(&pfd,1,0)!=1 || !(pfd.revents&POLLIN))break;
-            off_t size=lseek(dm,0,SEEK_END);
-            if(size<0 || (uint64_t)size<end)break;
             bytes=(size_t)end;
-            map=mmap(nullptr,bytes,PROT_READ,MAP_SHARED,dm,0);
-            if(map==MAP_FAILED)break;
-            dma_buf_sync ds={DMA_BUF_SYNC_START|DMA_BUF_SYNC_READ};
-            if(ioctl(dm,DMA_BUF_IOCTL_SYNC,&ds))break;
-            syncStarted=true;
+            // BananaFront presents DRM dumb buffers. Try their native read-only
+            // mapping first (not PRIME export, which some drivers reject).
+            // For other linear buffers retain the fenced DMA-BUF path.
+            drm_mode_map_dumb dumb={};dumb.handle=f->handles[0];
+            if(!drmIoctl(fd,DRM_IOCTL_MODE_MAP_DUMB,&dumb))
+                map=mmap(nullptr,bytes,PROT_READ,MAP_SHARED,fd,dumb.offset);
+            if(map==MAP_FAILED){
+                why="PRIME export failed";
+                if(drmPrimeHandleToFD(fd,f->handles[0],DRM_CLOEXEC,&dm))break;
+                why="producer busy";
+                pollfd pfd={dm,POLLIN,0};
+                if(poll(&pfd,1,0)!=1 || !(pfd.revents&POLLIN))break;
+                why="DMA-BUF size or mmap failed";
+                off_t size=lseek(dm,0,SEEK_END);
+                if(size<0 || (uint64_t)size<end)break;
+                map=mmap(nullptr,bytes,PROT_READ,MAP_SHARED,dm,0);
+                if(map==MAP_FAILED)break;
+                why="DMA-BUF read synchronization failed";
+                dma_buf_sync ds={DMA_BUF_SYNC_START|DMA_BUF_SYNC_READ};
+                if(ioctl(dm,DMA_BUF_IOCTL_SYNC,&ds))break;
+                syncStarted=true;
+            }
             const uint8_t* base=(const uint8_t*)map+f->offsets[0];
             // Four stratified samples per small pixel; vertically flipped.
             for(int y=0;y<h;y++)for(int x=0;x<w;x++){
@@ -101,7 +121,7 @@ rep("kms.cpp","\tint Display::lease(int s)",r"""
             if(!seen){drm_gem_close g={};g.handle=f->handles[i];drmIoctl(fd,DRM_IOCTL_GEM_CLOSE,&g);}
         }
         drmModeFreeFB2(f);
-        return ok;
+        return ok ? true : fail(why);
     }
 
 	int Display::lease(int s)""")
@@ -133,7 +153,7 @@ rep("main.cpp","\t\t\t\tif (want && !disp.flipPending())\n\t\t\t\t{\n\t\t\t\t\ts
                 if(azIdle && t>=azReflectionAt && !disp.flipPending()){
                     bool captured=azCaptureReflection();
                     azReflectionAt=t+(captured?200:1500);
-                    if(captured){azReflecting=true;want=true;}
+                    if(captured){if(!azReflecting)logf("Azeez reflection: capture active");azReflecting=true;want=true;}
                     else if(azReflecting){azReflecting=false;azReflection.reset();want=true;}
                 }
                 if(!azIdle){

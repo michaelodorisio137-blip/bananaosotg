@@ -5,6 +5,7 @@ on:
     branches: [azeezos-2.0]
     paths:
       - '.github/workflows/publish-azeezos-combined-gpu-ota.yml'
+      - 'tools/azeezos-2-idle-reflection.py'
 permissions:
   contents: write
   actions: read
@@ -116,7 +117,8 @@ jobs:
           sh -n rootfs/usr/libexec/banana/run-retroarch
           cat > rootfs/usr/share/banana/GBA-GPU-PREVIEW.txt <<'EOF'
           Experimental GBA GPU exterior: 320x240 logical, 640x480 output.
-          Enable by creating /data/banana/gba-gpu.enable (empty file).
+          Select mGBA Hardware (GLES3 Preview) in Settings > Other systems > Emulators > Game Boy Advance.
+          Alternatively enable by creating /data/banana/gba-gpu.enable (empty file).
           Remove marker to restore the existing software core.
           Optional live engine trace: create /data/banana/gba-3d-trace.enable containing tgr or mtm.
           Output: /data/banana/gba-3d-trace.csv. Remove marker after capture.
@@ -142,6 +144,8 @@ jobs:
           grep -Fq 'expanded 3D raster:' /tmp/ds-strings
           grep -Fq 'render.expanded_scale' /tmp/ds-strings
           grep -Fq 'azeez_idle_reflection' /tmp/ui-strings
+          grep -Fq 'mGBA Hardware (GLES3 Preview)' /tmp/ui-strings
+          grep -Fq 'Azeez reflection: capture active' /tmp/ui-strings
           grep -Fq 'Expanded 3D resolution' /tmp/ui-strings
           grep -Fq '320x240 (Native)' /tmp/ui-strings
           grep -Fq '640x480 (HD)' /tmp/ui-strings
