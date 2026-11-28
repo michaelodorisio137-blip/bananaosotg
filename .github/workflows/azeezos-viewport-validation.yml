@@ -50,7 +50,8 @@ jobs:
           python3 tools/azeezos-2-expanded-source.py nes FCEUmm
           git -C FCEUmm diff --check
           python3 tools/azeezos-2-expanded-source.py nes FCEUmm
-          grep -q 'azeez_nes_sample_sides();' FCEUmm/src/ppu.c
+          grep -Fq 'azeez_nes_sample_edge(smorkus,0,1);' FCEUmm/src/ppu.c
+          grep -Fq 'azeez_nes_sample_edge(azeez_nes_rewind_x(smorkus,2),1,1);' FCEUmm/src/ppu.c
           git -C BananaDS diff --check
           git -C PCSX diff --check
           grep -q 'rx=64; ry=48; rw=512; rh=384' BananaDS/bananads/src/frontend_kms.cpp

@@ -11,6 +11,7 @@ on:
       - 'tools/azeezos-2-native-integer.py'
       - 'tools/azeezos-2-region.py'
       - 'tools/azeezos-2-magazines.py'
+      - 'tools/azeezos-emulator-test-labels.py'
       - 'tools/azeezos-test-labels.py'
       - 'tools/magazine-import.py'
       - 'usb-sd2'
@@ -151,6 +152,7 @@ jobs:
           cp vb-component/vboycolor-corresponding-source.tar.gz out/
           python3 tools/gpu-launch-session.py rootfs
           python3 tools/azeezos-2-magazines.py --rootfs rootfs
+          python3 tools/azeezos-emulator-test-labels.py --rootfs bananads mgba_gles_preview fceumm vboycolor ppsspp_azeez rootfs
           python3 tools/azeezos-test-labels.py --rootfs rootfs mgba_gles_preview fceumm ppsspp_azeez vboycolor
           python3 -m py_compile tools/magazine-import.py
           install -D -m 0644 tools/magazine-import.py rootfs/usr/share/banana/magazines/magazine-import.py

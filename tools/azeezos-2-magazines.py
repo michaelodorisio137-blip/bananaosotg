@@ -16,7 +16,7 @@ always = yes
 
 """
 s=conf.read_text()
-if "[magazines]" not in s: conf.write_text(s+"\n"+section)
+if "[magazines]" not in s: conf.write_text(s.rstrip()+"\n\n"+section.strip()+"\n")
 doc=fs/"usr/share/banana/magazines/README.txt"
 doc.parent.mkdir(parents=True,exist_ok=True)
 doc.write_text("""AzeezOS Magazines preview

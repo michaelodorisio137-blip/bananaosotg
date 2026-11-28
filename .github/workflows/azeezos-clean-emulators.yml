@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/azeezos-clean-emulators.yml'
       - 'tools/azeezos-render-contract.md'
+      - 'tools/azeezos-emulator-test-labels.py'
 permissions:
   contents: read
 jobs:

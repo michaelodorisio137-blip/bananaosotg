@@ -29,6 +29,7 @@ g++ -std=c++17 -Wall -Wextra -Werror tools/mods/install_test.cpp -lz -o /tmp/mod
 python3 tools/ai-cheats/launcher_identity.py BananaLinux/system/rootfs
 python3 tools/azeezos-2-idle-reflection.py BananaLinux
 python3 tools/azeezos-2-magazines.py BananaLinux
+python3 tools/azeezos-emulator-test-labels.py BananaLinux
 python3 tools/azeezos-test-labels.py --ui BananaLinux
 g++ -std=c++17 -Wall -Wextra -Werror tools/ai-cheats/catalog_test.cpp -o /tmp/catalog-test
 /tmp/catalog-test
