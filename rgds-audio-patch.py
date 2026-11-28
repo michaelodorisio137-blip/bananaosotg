@@ -140,4 +140,43 @@ sub(snd, anchor, blend + anchor)
 # Trigger the special mixer cue as the boot animation starts.
 anchor = '\tgSplash.onCue = [&sound](const std::string& n) { sound.play(n); };'
 sub(main, anchor, anchor + '\n\tsound.play("rgds-startup");')
+
+# Stack Challenge audio: only use separately verified user-local ROM captures.
+# Preserve original theme sounds whenever a verified clip is unavailable.
+stack_anchor = '\t\tth = std::thread([this] { run(); });'
+stack_audio = r'''        // Stack Challenge cue pack; optional local assets, no ROM bundled.
+        bool stackSelect = false, stackReady = false;
+        for (auto spec : { std::pair<const char*, const char*>("scroll", "move.wav"),
+                           {"select", "line-clear.wav"}, {"stack-tetris", "tetris.wav"} })
+        {
+            Clip c;
+            if (!loadWav(std::string("/data/banana/stack-challenge/") + spec.second,
+                         c.pcm, c.rate, c.channels)) continue;
+#ifdef BANANA_ALSA
+            to48k(c.pcm, c.rate, c.channels);
+            toStereo(c.pcm, c.channels);
+#endif
+            if (c.rate != 48000 || c.channels != 2 || c.pcm.empty() ||
+                c.pcm.size() % 2 || c.pcm.size() > 48000u * 2u * 5u) continue;
+            clips[spec.first] = std::move(c);
+            if (std::string(spec.first) == "select") stackSelect = true;
+            if (std::string(spec.first) == "stack-tetris") stackReady = true;
+        }
+        if (stackSelect && stackReady)
+        {
+            Clip c = clips.at("select");
+            c.pcm.insert(c.pcm.end(), 4800, 0); // 50 ms pause, stereo
+            const auto& next = clips.at("stack-tetris").pcm;
+            c.pcm.insert(c.pcm.end(), next.begin(), next.end());
+            clips["stack-launch"] = std::move(c);
+        }
+'''
+sub(snd, stack_anchor, stack_audio + stack_anchor)
+# One queued composite cue ensures selection is not overwritten by loading.
+sub(snd, '\t\tif (!enabled || !clips.count(name)) return;',
+    '\t\tconst std::string cue = name == "stack-launch" && !clips.count(name) ? "ready" : name;\n\t\tif (!enabled || !clips.count(cue)) return;')
+sub(snd, '\t\t\tqueued = name;', '\t\t\tqueued = cue;')
+sub(main, 'return after == rnds::UI::LAUNCH && before != rnds::UI::LAUNCH ? "ready" : "select";',
+    'return after == rnds::UI::LAUNCH && before != rnds::UI::LAUNCH ? "stack-launch" : "select";')
+
 print("RG DS startup audio: chime -> oh-oh -> loop, with 100-ms crossfades.")
