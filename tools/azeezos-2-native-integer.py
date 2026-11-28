@@ -25,6 +25,10 @@ if sys.argv[1]=="--ui":
         '{ "ra_border", "off", ENUM, ON_OFF, 0, 0, true },\n\t\t\t{ "azeez_native_integer", "off", ENUM, ON_OFF, 0, 0, true },\n\t\t\t{ "azeez_gba_hd_affine", "on", ENUM, ON_OFF, 0, 0, true },')
     p=root/"ui/src/settings.cpp"
     s=p.read_text().replace("BananaDS","melonDS")
+    # Label the modified implementation in selectors, not internal section keys.
+    s=s.replace('{ "SuperDrastic", "melonDS" }','{ "SuperDrastic", "melonDS (Azeez Enhanced)" }')
+    s=s.replace('{ "", "SuperDrastic", "melonDS" }','{ "", "SuperDrastic", "melonDS (Azeez Enhanced)" }')
+    s=s.replace('global == "bananads" ? "melonDS"','global == "bananads" ? "melonDS (Azeez Enhanced)"')
     s=s.replace('getConfValue("/etc/banana/settings.conf", "nds_emulator", "superdrastic")','getConfValue("/etc/banana/settings.conf", "nds_emulator", "bananads")')
     anchor='add(BD, "nds", "Edge marking",'
     assert s.count(anchor)==1

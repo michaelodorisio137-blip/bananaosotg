@@ -149,6 +149,41 @@ rep('/usr/libexec/banana/ra-secrets scrub; rm -f $RA', r'''if [ -n "$AZ_GPU_LOG"
 fi
 /usr/libexec/banana/ra-secrets scrub; rm -f $RA''')
 p.write_text(s)
+# On each installed OTA version, select the bundled revised DS/GBA emulators
+# once before the UI reads settings. Subsequent user choices are respected.
+migration=root/"usr/libexec/banana/azeez-updated-core-defaults"
+migration.write_text(r'''#!/bin/sh
+set -eu
+D=/data/banana
+C=$D/settings.conf
+M=$D/.azeez-core-defaults-version
+V=$(cat /etc/banana/version)
+[ -n "$V" ] || exit 1
+[ "$(cat "$M" 2>/dev/null || :)" != "$V" ] || exit 0
+[ -s /usr/bin/bananads ] && [ -s /usr/lib/libretro/mgba_gles_preview_libretro.so ] || exit 0
+mkdir -p "$D"
+[ -f "$C" ] || cp /etc/banana/settings.conf "$C"
+tmp=$(mktemp "$D/.core-defaults.XXXXXX")
+trap 'rm -f "$tmp"' EXIT HUP INT TERM
+# Preserve all unrelated settings and per-game overrides.
+awk '!/^[ \t]*(nds_emulator|core[.]gba)[ \t]*=/' "$C" > "$tmp"
+printf '%s\n' 'nds_emulator = bananads' 'core.gba = mgba_gles_preview' >> "$tmp"
+chmod 0644 "$tmp"
+mv "$tmp" "$C"
+printf '%s\n' "$V" > "$M.new"
+mv "$M.new" "$M"
+sync
+echo "AzeezOS $V: selected updated DS and GBA renderers"
+''')
+migration.chmod(0o755)
+session=root/"usr/bin/banana-ui-session"
+ss=session.read_text()
+a="exec /usr/bin/banana-ui"
+if ss.count(a)!=1: raise SystemExit("UI startup anchor mismatch")
+ss=ss.replace(a,'/usr/libexec/banana/azeez-updated-core-defaults >> "$LOG" 2>&1 || :\n'+a)
+session.write_text(ss)
+subprocess.run(["sh","-n",str(migration)],check=True)
+subprocess.run(["sh","-n",str(session)],check=True)
 bf=root/"usr/libexec/banana/run-bananafront"
 bs=bf.read_text()
 a="CFG=/data/retroarch/retroarch.cfg"

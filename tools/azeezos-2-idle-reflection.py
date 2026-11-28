@@ -12,7 +12,7 @@ def rep(rel,a,b):
 # Expose the distinct hardware core through the existing per-system core selector.
 # Anchor the existing GBA-specific gpSP entry, preserving default ordering.
 rep("settings.cpp",'{ "gpsp", "gpSP" },',
-    '{ "gpsp", "gpSP" }, { "mgba_gles_preview", "mGBA Hardware (GLES3 Preview)" },')
+    '{ "gpsp", "gpSP" }, { "mgba_gles_preview", "mGBA Hardware (GLES3 Preview) - Azeez" },')
 # Discover every installed libretro core, including those without metadata.
 rep("settings.cpp",'\t};\n\tstatic bool coreInstalled(const std::string& core)',r'''
         { "saturn", "Sega Saturn", { { "yabasanshiro", "YabaSanshiro" }, { "mednafen_saturn", "Beetle Saturn" }, { "yabause", "Yabause" }, { "kronos", "Kronos" } } },
@@ -57,6 +57,9 @@ rep("settings.cpp",'\t\t\tfor (const auto& c : sys.cores) sig += coreInstalled(c
             for (const auto& c : sys.cores) sig += coreInstalled(c.first) ? '1' : '0';
         for(const auto& c:azInstalledCores())sig+="|"+c;''')
 rep("settings.cpp",'if (names.size() < 2) continue;', 'if (names.empty()) continue;')
+# Defaults for fresh settings; the OTA startup migration handles existing cards.
+rep("settings_defaults.cpp",'{ "core.gba", "gpsp", CORE, nullptr, 0, 0 },',
+    '{ "core.gba", "mgba_gles_preview", CORE, nullptr, 0, 0 },')
 rep("kms.h","int leasedScreen() const { return leased; }",
     """int leasedScreen() const { return leased; }
         // Read an existing linear scanout; no new emulator frame or GL readback.
