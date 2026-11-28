@@ -44,29 +44,46 @@ def wav(path,pcm):
     with wave.open(str(path),'wb') as w:
         w.setnchannels(1);w.setsampwidth(2);w.setframerate(RATE);w.writeframes(pcm.tobytes())
 def capture(rom,out):
+    """Capture only actual ROM buzzer events, including during active gameplay."""
+    import hashlib
     out.mkdir(parents=True,exist_ok=True)
     m=Machine(rom)
     def step(seconds):
         m.run(int(seconds*CLOCK));return m.sound()
-    def tap(key):
-        m.button(key,True);a=step(.12);m.button(key,False);a.extend(step(.45));return a
-    step(.5)
-    clips={'power':tap('power')}
-    clips['rotate']=tap('rotate')
-    for k in ('left','right','down','rotate','pause','sound'):
-        a=tap(k)
-        if any(a): clips[k]=a
-    # Leave sound enabled after probing the sound toggle.
-    tap('sound')
-    # Save only audible, observed events. Never fabricate replacements.
-    report={}
-    for k,a in clips.items():
+    def tap(key,hold=.12,after=.45):
+        m.button(key,True);a=step(hold);m.button(key,False);a.extend(step(after));return a
+    report={}; attempts=[]; seen={}
+    def record(key,a):
         nz=[i for i,v in enumerate(a) if v]
-        if not nz: continue
+        attempts.append({"action":key,"audible":bool(nz),"samples":len(a)})
+        if not nz: return
         a=a[max(0,nz[0]-240):min(len(a),nz[-1]+241)]
-        wav(out/(k+'.wav'),a);report[k]={'samples':len(a),'rate':RATE}
-    (out/'capture.json').write_text(json.dumps(report,indent=2))
-    if not report: raise RuntimeError('No buzzer output captured; inspect ROM/input sequence')
+        digest=hashlib.sha256(a.tobytes()).hexdigest()
+        if digest in seen:
+            attempts[-1]["duplicate_of"]=seen[digest];return
+        name=key; i=2
+        while name in report:
+            name=f"{key}-{i}";i+=1
+        wav(out/(name+".wav"),a)
+        seen[digest]=name
+        report[name]={"action":key,"samples":len(a),"rate":RATE,"pcm_sha256":digest}
+    step(.5)
+    record("power",tap("power",after=1.2))
+    record("rotate",tap("rotate",after=1.2))
+    record("idle",step(2.0))
+    # Exercise actual play before using the sound toggle. Do not infer a
+    # landing or line clear solely from the down button.
+    for cycle in range(5):
+        for key in ("left","right","rotate","down","down"):
+            record(key,tap(key,hold=.20 if key=="down" else .12,after=.35))
+        record("idle",step(1.0))
+    record("pause",tap("pause"))
+    record("pause",tap("pause"))
+    record("sound",tap("sound"))
+    record("sound",tap("sound"))
+    (out/"capture.json").write_text(json.dumps(report,indent=2))
+    (out/"attempts.json").write_text(json.dumps(attempts,indent=2))
+    if not report: raise RuntimeError("No buzzer output captured; inspect ROM/input sequence")
     print(json.dumps(report))
 def sdlgame(rom):
     s=C.CDLL(ctypes.util.find_library('SDL2') or 'libSDL2-2.0.so.0')
