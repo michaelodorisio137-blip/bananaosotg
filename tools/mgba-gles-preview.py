@@ -69,7 +69,20 @@ static void azPresent(void) {
         /* mGBA output has row zero at GL y=0. Flip for the libretro FBO. */
         glBlitFramebuffer(0,0,480,320,80,400,560,80,GL_COLOR_BUFFER_BIT,GL_NEAREST);
     }
+    /* The GL2 frontend binds its frame texture before restoring render state.
+     * mGBA's finalizer leaves unit 8 active; hand back unit 0 and clean state
+     * to avoid the normal gameplay shader sampling an unrelated texture. */
     glBindFramebuffer(GL_FRAMEBUFFER,target);
+    glActiveTexture(GL_TEXTURE0);
+    glBindSampler(0,0);
+    glBindTexture(GL_TEXTURE_2D,0);
+    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER,0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,0);
+    glDisable(GL_STENCIL_TEST);
+    glDisable(GL_CULL_FACE);
+    glDisable(GL_RASTERIZER_DISCARD);
+    glUseProgram(0);
     videoCallback(RETRO_HW_FRAME_BUFFER_VALID,640,480,0);
 }
 ''')
