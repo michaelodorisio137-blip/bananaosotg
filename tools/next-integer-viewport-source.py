@@ -155,7 +155,7 @@ static bool rgdsGBASample(const struct GBAVideoSoftwareRenderer* r,
     unsigned off = mode != 3 && GBARegisterDISPCNTIsFrameSelect(r->dispcnt) ? 0xA000 : 0;
     unsigned at = off + (y*w+x)*(mode==4?1:2);
     if (at >= 0x14000) return false;
-    if (mode==4) { if (!v[at]) return false; *color=r->normalPalette[v[at]]; }
+    if (mode==4) { *color=r->normalPalette[v[at]]; }
     else *color=mColorFrom555(rgdsRead16(v,at));
     return true;
 }
@@ -179,6 +179,7 @@ static mColor rgdsGBAExteriorPixel(const struct GBAVideoSoftwareRenderer* r,
 static void rgdsGBAExteriorBlock(const struct GBAVideoSoftwareRenderer* r,int x,int y,int line,bool hd) {
     mColor c=rgdsGBAExteriorPixel(r,x-40,y-40,line,0,0);
     rgdsGBABorder[y*320+x]=c;
+    if (!rgdsGBAHD()) return; // no HD buffer writes in 240p mode
     if (!hd) {
         rgdsGBAHDFrame[y*1280+x*2]=c;
         rgdsGBAHDFrame[y*1280+x*2+1]=c;

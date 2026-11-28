@@ -8,6 +8,8 @@ on:
       - '.github/workflows/azeezos-clean-emulators.yml'
       - 'tools/azeezos-render-contract.md'
       - 'tools/azeezos-emulator-test-labels.py'
+      - 'tools/next-integer-viewport-source.py'
+      - 'tools/azeezos-2-ds-expanded.py'
 permissions:
   contents: read
 jobs:

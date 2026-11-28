@@ -18,6 +18,93 @@ rep("melonds/src/GPU.h","private:\n    void ResetVRAMCache() noexcept;",
 
 private:
     void ResetVRAMCache() noexcept;""")
+
+# Capture exterior at the actual pre-draw boundary, before HBlank DMA can
+# replace tilemaps, scroll, palettes and priority. Keep only the winning text
+# pixel above and below BG0's 3D layer; composite the existing 3D raster at
+# presentation, without reading guest VRAM after the frame.
+rep("melonds/src/GPU2D.h","    u32 Num;\n    bool Enabled;",r"""    void CaptureExpandedLine(u32 line);
+    u16 ExpandedUnder[240][320]{};
+    u16 ExpandedOver[240][320]{};
+    u8 Expanded3D[240]{};
+    u8 ExpandedValid[240]{};
+    u32 Num;
+    bool Enabled;""")
+rep("melonds/src/GPU.cpp","            Rend->DrawScanline(line);",r"""        {
+            static const bool azCapture = getenv("AZEEZ_EXPANDED_VIEWPORT") != nullptr;
+            if (azCapture) {
+                GPU2D_A.CaptureExpandedLine(line);
+                GPU2D_B.CaptureExpandedLine(line);
+            }
+            Rend->DrawScanline(line);
+        }""")
+rep("melonds/src/GPU2D.cpp","void GPU2D::Reset()\n{",r"""void GPU2D::CaptureExpandedLine(u32 line)
+{
+    if (line>=192) return;
+    if (line==0) memset(ExpandedValid,0,sizeof ExpandedValid);
+    const unsigned dc=DispCnt, mode=dc&7;
+    const bool white=ForcedBlank || (Enabled && ((dc>>16)&3)==0) || (!Enabled && Num);
+    const bool active=Enabled && !ForcedBlank && ((dc>>16)&3)==1 && mode<6;
+    const bool has3d=active && !Num && (dc&8) && (LayerEnable&1);
+    const u16 backdrop=white?0x7fff:(!Enabled?0:GPU.ReadPalette<u16>(Num*0x400)&0x7fff);
+    struct Layer { unsigned i,bc,map,chr; bool above; };
+    Layer layers[4]; unsigned count=0;
+    bool above=false;
+    if(active) for(int pr=3;pr>=0;--pr) for(int i=3;i>=0;--i) {
+        unsigned bc=BGCnt[i];
+        if (!(LayerEnable&(1u<<i)) || (bc&3)!=(unsigned)pr) continue;
+        if(i==0 && has3d) { above=true; continue; }
+        if(i==3 && mode!=0) continue;
+        if(i==2 && mode!=0 && mode!=1 && mode!=3) continue;
+        layers[count++]={(unsigned)i,bc,((bc&0x1f00)<<3)+(Num?0:((dc&0x38000000)>>11)),
+            ((bc&0x003c)<<12)+(Num?0:((dc&0x07000000)>>8)),above};
+    }
+    auto rd8=[&](unsigned a)->u8 {return Num?GPU.ReadVRAM_BBG<u8>(a):GPU.ReadVRAM_ABG<u8>(a);};
+    auto rd16=[&](unsigned a)->u16 {return Num?GPU.ReadVRAM_BBG<u16>(a):GPU.ReadVRAM_ABG<u16>(a);};
+    const int first=line==0?0:(int)line+24, end=line==191?240:(int)line+25;
+    for(int row=first;row<end;row++) {
+        bool sideOnly=row>=24 && row<216;
+        for(int span=0;span<(sideOnly?2:1);span++) {
+            int left=sideOnly&&span?288:0,right=sideOnly&&!span?32:320;
+            for(int col=left;col<right;col++) {
+                u16 under=backdrop, over=0;
+                for(unsigned k=0;k<count;k++) {
+                    const auto& l=layers[k]; unsigned bc=l.bc,i=l.i;
+                    unsigned x=(unsigned)(col-32+BGXPos[i])&((bc&0x4000)?511:255);
+                    unsigned y=(unsigned)(row-24+BGYPos[i])&((bc&0x8000)?511:255);
+                    unsigned block=(x>>8)+((y>>8)*((bc&0x4000)?2:1));
+                    unsigned tile=rd16(l.map+block*2048+((y&255)>>3)*64+((x&255)>>3)*2);
+                    unsigned tx=x&7,ty=y&7,n;u16 c;
+                    if(tile&0x400)tx=7-tx;
+                    if(tile&0x800)ty=7-ty;
+                    if(bc&0x80) {
+                        n=rd8(l.chr+(tile&1023)*64+ty*8+tx);
+                        if(!n)continue;
+                        if(dc&(1u<<30)) {
+                            unsigned slot=(i<2&&(bc&0x2000))?i+2:i;
+                            c=GPU.ReadExpandedBGPalette(Num!=0,slot*8192+(tile>>12)*512+n*2);
+                        } else c=GPU.ReadPalette<u16>(Num*0x400+n*2);
+                    } else {
+                        n=(rd8(l.chr+(tile&1023)*32+ty*4+tx/2)>>((tx&1)*4))&15;
+                        if(!n)continue;
+                        c=GPU.ReadPalette<u16>(Num*0x400+((tile>>12)*16+n)*2);
+                    }
+                    if(l.above)over=(c&0x7fff)|0x8000;
+                    else under=c&0x7fff;
+                }
+                ExpandedUnder[row][col]=under;
+                ExpandedOver[row][col]=over;
+            }
+        }
+        Expanded3D[row]=has3d;
+        ExpandedValid[row]=1;
+    }
+}
+
+void GPU2D::Reset()
+{
+    memset(ExpandedValid,0,sizeof ExpandedValid);""")
+
 rep("bananads/src/emu.h","    const uint32_t* bottom() const;",
     """    const uint32_t* bottom() const;
     const uint32_t* expanded_screen(bool bottom, uint32_t* dest=nullptr, int pitch=640) const;""")
@@ -33,7 +120,7 @@ const uint32_t* Emu::expanded_screen(bool bottom_screen, uint32_t* dest, int pit
     const unsigned dc=bg.DispCnt, mode=dc&7;
     int sc3=1;
     const uint32_t* scene=nullptr;
-    if (!bg.Num && (dc&8) && (dc&0x100))
+    if (!bg.Num)
         scene=gpu.GetRenderer().Expanded3DFrame(sc3);
     auto read8=[&](unsigned a)->uint8_t {
         return bg.Num ? gpu.ReadVRAM_BBG<uint8_t>(a) : gpu.ReadVRAM_ABG<uint8_t>(a);
@@ -66,6 +153,25 @@ const uint32_t* Emu::expanded_screen(bool bottom_screen, uint32_t* dest, int pit
             ((bc&0x003c)<<12)+(bg.Num?0:((dc&0x07000000)>>8))};
     }
     auto sample=[&](int x,int y,unsigned dx,unsigned dy)->uint32_t {
+        const unsigned row=(unsigned)(y+24), col=(unsigned)(x+32);
+        if(row<240 && col<320 && bg.ExpandedValid[row]) {
+            unsigned c=bg.ExpandedUnder[row][col], over=bg.ExpandedOver[row][col];
+            if(over&0x8000)return rgb(over&0x7fff);
+            if(scene && bg.Expanded3D[row]) {
+                unsigned idx=sc3==2 ? (row*2+dy)*640+dx*320+col : row*320+col;
+                uint32_t p=scene[idx]; unsigned a=(p>>24)&31;
+                if(a) {
+                    unsigned r=(p&63)>>1,g=((p>>8)&63)>>1,b=((p>>16)&63)>>1;
+                    if(a<31) {
+                        r=(r*(a+1)+(c&31)*(31-a))>>5;
+                        g=(g*(a+1)+((c>>5)&31)*(31-a))>>5;
+                        b=(b*(a+1)+((c>>10)&31)*(31-a))>>5;
+                    }
+                    c=r|(g<<5)|(b<<10);
+                }
+            }
+            return rgb(c);
+        }
         unsigned c=backdrop;
         if (blank) return 0xffffffffu;
         for(unsigned k=0;k<layer_count;++k) {
@@ -146,7 +252,7 @@ const uint32_t* Emu::expanded_screen(bool bottom_screen, uint32_t* dest, int pit
         for(int span=0;span<(center?2:1);span++) {
             int first=center && span?288:0;
             int last=center && !span?32:320;
-            if(blank || layer_count==0) {
+            if(!bg.ExpandedValid[y] && (blank || layer_count==0)) {
                 const uint32_t color=blank?0xffffffffu:rgb(backdrop);
                 for(int i=first*2;i<last*2;++i) a[i]=b[i]=color;
                 continue;
