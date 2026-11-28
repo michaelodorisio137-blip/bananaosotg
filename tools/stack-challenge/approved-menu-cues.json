@@ -11,8 +11,8 @@
     "approval": "User explicitly selected this clip; single-line-clear event identity not independently verified."
   },
   "loading": {
-    "status": "awaiting user-approved Tetris cue",
-    "install_path": "/data/banana/stack-challenge/tetris.wav"
+    "status": "disabled",
+    "approval": "User requested skipping Now Loading sound; game launch plays selection only."
   },
   "movement": {
     "source": "left-3.wav",
