@@ -21,7 +21,7 @@ if sys.argv[1]=="--ui":
             if (it.key == "scrape") { startScrape(); return MOVED; }''')
     replace("ui/src/settings.cpp", 'else if (it.kind == Item::PAGE && it.key == "ds_name")', '''else if (it.kind == Item::PAGE && it.key == "bios_folder_pick") { v = getConfValue(data + "/settings.conf", "bios_folder", "/data/bios"); nameValue = true; }
             else if (it.kind == Item::PAGE && it.key == "ds_name")''')
-    replace("ui/src/settings_defaults.cpp", '{ "theme", "dark", TEXT, nullptr, 0, 0 },', '{ "theme", "dark", TEXT, nullptr, 0, 0 },\n\t\t\t{ "bios_folder", "/data/bios", TEXT, nullptr, 0, 0 },')
+    replace("ui/src/settings_defaults.cpp", '{ "game_sort", "title", ENUM, GAME_SORT, 0, 0 },', '{ "game_sort", "title", ENUM, GAME_SORT, 0, 0 },\n\t\t\t{ "bios_folder", "/data/bios", TEXT, nullptr, 0, 0 },')
     replace("ui/src/settings.h", "void pickFolder(int purpose,", "bool biosFolderPicking = false;\n\t\tvoid pickFolder(int purpose,")
     replace("ui/src/settings_files.cpp", "enum Pick { NO_PICK, PICK_DOWNLOAD, PICK_UNPACK };", "enum Pick { NO_PICK, PICK_DOWNLOAD, PICK_UNPACK, PICK_BIOS };")
     replace("ui/src/settings_files.cpp", "fm->pick = purpose == 2 ? Files::PICK_UNPACK : Files::PICK_DOWNLOAD;", "biosFolderPicking = purpose == 3;\n\t\tfm->pick = purpose == 3 ? Files::PICK_BIOS : purpose == 2 ? Files::PICK_UNPACK : Files::PICK_DOWNLOAD;")

@@ -8,6 +8,7 @@ on:
       - 'tools/azeezos-2-idle-reflection.py'
       - 'tools/azeezos-reflection-producer.py'
       - 'tools/gpu-launch-session.py'
+      - 'tools/azeezos-2-native-integer.py'
       - 'usb-sd2'
       - 'tools/mgba-gles-preview.py'
       - 'tools/azeezos-2-ds-expanded.py'
@@ -185,6 +186,10 @@ jobs:
           grep -Fq 'mGBA Hardware (GLES3 Preview) - Azeez' /tmp/ui-strings
           grep -Fq 'melonDS (Azeez Enhanced)' /tmp/ui-strings
           grep -Fq 'VBoy Color (Azeez)' /tmp/ui-strings
+          grep -Fq 'BIOS folder' /tmp/ui-strings
+          grep -Fq 'Game sort' /tmp/ui-strings
+          grep -Fq 'core.virtualboy = mednafen_vb' rootfs/usr/libexec/banana/azeez-updated-core-defaults
+          grep -Fq 'setting bios_folder' rootfs/usr/libexec/banana/run-retroarch
           sh -n rootfs/usr/libexec/banana/azeez-updated-core-defaults
           grep -Fq 'azeez-updated-core-defaults' rootfs/usr/bin/banana-ui-session
           grep -Fq 'Azeez reflection: capture active' /tmp/ui-strings
@@ -214,7 +219,7 @@ jobs:
           FILE="banana-rgds-$VERSION.update.tar"
           TAG="v$VERSION"
           if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" "out/$FILE" out/vboycolor-corresponding-source.tar.gz out/SHA256SUMS-rgds.txt --target "$GITHUB_SHA" --title "AzeezOS RG DS 2.0 combined GPU development preview" --notes "Corrects DS expanded viewport centering and polygon bounds; preserves software mGBA cores; includes NES scanline seam repair, optional GLES3 expanded GBA core with clean frontend graphics-state handoff and candidate CRIS routine capture, dynamic installed core selection, version-aware default DS/GBA renderer selection, explicit core priority, PPSSPP buffered renderer and Saturn GPU launch isolation, and producer-side BananaFront idle reflection with linear scanout fallback. No live 3D polygon replacement yet. Adds GPLv3 VBoy Color with 17 upstream color packs and automatic colors, including original red and custom .vbcp support; no AI-generated packs yet. Hardware functionality and speed unverified. Prior OTA preserved." --prerelease --draft
+            gh release create "$TAG" "out/$FILE" out/vboycolor-corresponding-source.tar.gz out/SHA256SUMS-rgds.txt --target "$GITHUB_SHA" --title "AzeezOS RG DS 2.0 combined GPU development preview" --notes "Corrects DS expanded viewport centering and polygon bounds; preserves software mGBA cores; includes NES scanline seam repair, optional GLES3 expanded GBA core with clean frontend graphics-state handoff and candidate CRIS routine capture, dynamic installed core selection, version-aware default DS/GBA renderer selection, explicit core priority, PPSSPP buffered renderer and Saturn GPU launch isolation, and producer-side BananaFront idle reflection with linear scanout fallback. No live 3D polygon replacement yet. Adds GPLv3 VBoy Color with 17 upstream color packs and automatic colors, including original red and custom .vbcp support; expanded Beetle VB restored as default. Adds shared BIOS-folder selection for RetroArch, BananaFront and melonDS; USB watcher avoids redundant status writes. No AI-generated packs or persistent MMC cache yet. Hardware functionality and speed unverified. Prior OTA preserved." --prerelease --draft
           fi
           mkdir -p verify
           gh release download "$TAG" --pattern "$FILE" --pattern vboycolor-corresponding-source.tar.gz --pattern SHA256SUMS-rgds.txt --dir verify
