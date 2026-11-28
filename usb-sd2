@@ -23,7 +23,9 @@ roms_pointer() {
     on=$(sed -n 's/^sd2_roms *= *//p' /data/banana/settings.conf 2>/dev/null | tail -n 1)
     [ -n "$on" ] || on=$(sed -n 's/^sd2_roms *= *//p' /etc/banana/settings.conf 2>/dev/null | tail -n 1)
     if [ "$on" != off ] && [ -d "$M/roms" ] && [ -n "$(current_mount)" ]; then
-        printf '%s\n' "$M/roms" > "$S/roms"
+        # The UI watches IN_CLOSE_WRITE here. Only publish actual changes.
+        [ "$(cat "$S/roms" 2>/dev/null)" = "$M/roms" ] ||
+            printf '%s\n' "$M/roms" > "$S/roms"
     else
         rm -f "$S/roms"
     fi
@@ -32,8 +34,9 @@ roms_pointer() {
 scan() {
     mkdir -p "$M" "$S"
     # On RG DS there is no second SD slot; advertise removable media to settings.
-    : > "$S/slot"
-    : > "$S/usb"
+    # These are presence markers, not heartbeat files.
+    [ -e "$S/slot" ] || : > "$S/slot"
+    [ -e "$S/usb" ] || : > "$S/usb"
     if ! mkdir "$LOCK" 2>/dev/null; then return 0; fi
     trap 'rmdir "$LOCK" 2>/dev/null' EXIT HUP INT TERM
 
