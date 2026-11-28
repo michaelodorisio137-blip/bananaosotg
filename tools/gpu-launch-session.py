@@ -66,7 +66,7 @@ if [ "$AZ_GBA_GPU" = 1 ]; then
 fi
 CFG=/data/retroarch/retroarch.cfg''')
 rep("BKEYS='^(video_shader_enable|video_smooth|",
-    "BKEYS='^(video_driver|video_context_driver|video_threaded|video_max_swapchain_images|crt_switch_resolution|auto_overrides_enable|video_shader_enable|video_smooth|")
+    "BKEYS='^(video_driver|video_context_driver|video_threaded|video_max_swapchain_images|crt_switch_resolution|auto_overrides_enable|system_directory|video_shader_enable|video_smooth|")
 anchor="# anything RetroArch keeps that retroarch.cfg doesn't place"
 rep(anchor, """# Azeez GPU session settings. Reuse the existing crash-safe config backup.
 # No changes to the user's global driver, CRT, or integer-scaling preferences.
@@ -90,6 +90,22 @@ video_scale_integer = "false"
 aspect_ratio_index = "0"
 input_overlay_enable = "false"
 AZ_GPU
+    if [ "$BANANA_SYSTEM" = saturn ]; then
+        # Locate the required BIOS without altering user's configured files.
+        BIOSDIR=$(sed -n 's/^system_directory = "\\(.*\\)"/\\1/p' "$CFG" | tail -n 1)
+        for d in "$BIOSDIR" /data/bios /data/bios/saturn /data/bios/Saturn /data/retroarch/system /data/retroarch/system/saturn; do
+            [ -n "$d" ] || continue
+            found=
+            for n in saturn_bios.bin sega_101.bin mpr-17933.bin; do
+                [ -s "$d/$n" ] && { found=1; break; }
+            done
+            if [ "$found" = 1 ]; then
+                printf 'system_directory = "%s"\\n' "$d" >> "$BCFG"
+                echo "Azeez Saturn BIOS directory: $d" >&2
+                break
+            fi
+        done
+    fi
     BA="|$BCFG"
     echo "Azeez GPU session: $BANANA_SYSTEM $CORE, GL/KMS" >&2
     ;;
