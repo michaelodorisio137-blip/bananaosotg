@@ -13,5 +13,16 @@
   "loading": {
     "status": "awaiting user-approved Tetris cue",
     "install_path": "/data/banana/stack-challenge/tetris.wav"
+  },
+  "movement": {
+    "source": "left-3.wav",
+    "capture_run": 46121892659,
+    "artifact": 15253814057,
+    "pcm_sha256": "97635d649055aaca9b714441aa3233600d819fbf7a04b9f89c5a6f1757d3cfdd",
+    "rate": 48000,
+    "channels": 1,
+    "samples": 3472,
+    "install_path": "/data/banana/stack-challenge/move.wav",
+    "approval": "User explicitly approved this movement sound."
   }
 }
