@@ -128,7 +128,7 @@ jobs:
       - name: Preserve baseline and install combined component binaries
         shell: bash
         run: |
-          set -euo pipefail
+          set -euxo pipefail
           sudo apt-get update -qq
           sudo apt-get install -y squashfs-tools
           dir=$(cat /tmp/ota-dir)
@@ -207,9 +207,11 @@ jobs:
           sh -n rootfs/usr/libexec/banana/azeez-updated-core-defaults
           grep -Fq 'azeez-updated-core-defaults' rootfs/usr/bin/banana-ui-session
           grep -Fq 'Azeez reflection: capture active' /tmp/ui-strings
-          grep -Fq 'Expanded 3D resolution' /tmp/ui-strings
-          grep -Fq '320x240 (Native)' /tmp/ui-strings
-          grep -Fq '640x480 (HD)' /tmp/ui-strings
+          grep -Fq 'Expanded 3D camera' /tmp/ui-strings
+          grep -Fxq '3D resolution' /tmp/ui-strings
+          grep -Fq 'render.expanded_scale' /tmp/ui-strings
+          grep -Fq '240p (320x240)' /tmp/ui-strings
+          grep -Fq '480p (640x480)' /tmp/ui-strings
           VERSION="2.0.0-dev.$GITHUB_RUN_ID"
           printf '%s\n' "$VERSION" > rootfs/etc/banana/version
           printf '%s\n' "$VERSION" > "$dir/VERSION"
