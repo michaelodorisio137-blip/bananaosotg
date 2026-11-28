@@ -213,13 +213,20 @@ print("DS: row copies, exterior-only sampling, one KMS write instead of two")
 # Original 256x192 and conventional higher scales remain available with wide mode off.
 rep("melonds/src/GPU.h","    virtual bool NeedsShaderCompile() { return false; }",'''    virtual const u32* Expanded3DFrame(int& scale) const { scale=1; return nullptr; }
     virtual bool NeedsShaderCompile() { return false; }''')
-rep("melonds/src/GPU3D.cpp","    // clipping\n",'''    // Widen full-screen projection before clipping, using new vertices
-    // only (the shared strip vertices have already been transformed).
+rep("melonds/src/GPU3D.cpp","    // clipping\n",'''    // Each native viewport retains its original pixel mapping inside the
+    // centered canvas. Extend only the edges touching the native LCD.
     static const bool azWide=getenv("AZEEZ_DS_WIDE3D")!=nullptr;
-    if(azWide && Viewport[0]==0 && Viewport[3]==0 &&
-       Viewport[4]==256 && Viewport[5]==192) for(int i=clipstart;i<nverts;i++) {
-        clippedvertices[i].Position[0]=(s32)((s64)clippedvertices[i].Position[0]*4/5);
-        clippedvertices[i].Position[1]=(s32)((s64)clippedvertices[i].Position[1]*4/5);
+    const int azL=azWide && Viewport[0]==0 ? 32:0;
+    const int azR=azWide && Viewport[0]+Viewport[4]==256 ? 32:0;
+    const int azT=azWide && Viewport[3]==0 ? 24:0;
+    const int azB=azWide && Viewport[3]+Viewport[5]==192 ? 24:0;
+    const int azW=Viewport[4]+azL+azR, azH=Viewport[5]+azT+azB;
+    const int azX=Viewport[0]+32-azL, azY=Viewport[3]+24-azT;
+    if(azWide && azW>0 && azH>0) for(int i=clipstart;i<nverts;i++) {
+        auto& p=clippedvertices[i].Position;
+        // Signed arithmetic; y is inverted in the viewport transform.
+        p[0]=(s32)(((s64)p[0]*Viewport[4]+(s64)p[3]*(azL-azR))/azW);
+        p[1]=(s32)(((s64)p[1]*Viewport[5]+(s64)p[3]*(azB-azT))/azH);
     }
     // clipping
 ''')
@@ -290,19 +297,23 @@ rep("bananads/CMakeLists.txt","add_library(gengis STATIC ${GX}/gx.c",
 # Keep the game's viewport registers untouched. Map clip-space to expanded raster.
 rep("melonds/src/GPU3D.cpp","            vtx->HiresPosition[0] = posX & 0x1FFF;\n            vtx->HiresPosition[1] = posY & 0xFFF;",
     """            if (azWide) {
-                if (Viewport[0]==0 && Viewport[3]==0 && Viewport[4]==256 && Viewport[5]==192) {
-                    posX = ((((s64)(vtx->Position[0] + w) * 320) << 4) / (((s64)w) << 1));
-                    posY = ((((s64)(-vtx->Position[1] + w) * 240) << 4) / (((s64)w) << 1));
-                } else {
-                    posX = (posX & 0x1FFF) + 32*16;
-                    posY = (posY & 0xFFF) + 24*16;
-                }
+                // Apply the matching expanded viewport with the offset once.
+                // The original LCD center (128,96) maps to (160,120).
+                posX = (u32)((((s64)vtx->Position[0]+w)*azW*16)/((s64)w*2)+azX*16);
+                posY = (u32)(((-(s64)vtx->Position[1]+w)*azH*16)/((s64)w*2)+azY*16);
                 vtx->HiresPosition[0] = posX;
                 vtx->HiresPosition[1] = posY;
+                vtx->FinalPosition[0] = posX >> 4;
+                vtx->FinalPosition[1] = posY >> 4;
             } else {
                 vtx->HiresPosition[0] = posX & 0x1FFF;
                 vtx->HiresPosition[1] = posY & 0xFFF;
             }""")
+# Expanded coordinates must also govern polygon bounds and sorting.
+rep("melonds/src/GPU3D.cpp","    s32 ytop = 192, ybot = 0;\n    s32 xtop = 256, xbot = 0;",
+    "    s32 ytop = azWide ? 240 : 192, ybot = 0;\n    s32 xtop = azWide ? 320 : 256, xbot = 0;")
+rep("melonds/src/GPU3D.cpp","    if (ybot > 192) poly->Degenerate = true;",
+    "    if (ybot > (azWide ? 240 : 192)) poly->Degenerate = true;")
 # Expanded mode uses 1x the new canvas, not conventional supersampling.
 rep("bananads/src/emu.cpp","    const int scale = scale_cfg >= 2 && scale_cfg <= 4 ? (int)scale_cfg : 1;",
     """    const bool native_wide = getenv("AZEEZ_DS_WIDE3D") != nullptr;
@@ -355,3 +366,14 @@ rep(p,"const unsigned bin = (unsigned)line / (GX_BL / Sub);\n    auto drawn",
 rep(p,"    if (line < GX_H) WaitBin((unsigned)line / (GX_BL / Sub));",
     "    if (line < GX_H) WaitBin((unsigned)(line+(Wide3D?24:0)) / (GX_BL / Sub));")
 print("Expanded 320x240 and 640x480 raster variants integrated: 15 bins, exact centered crop")
+
+# Regression test for the viewport transform (exact rational coordinates).
+from fractions import Fraction as F
+for start,extent,limit,pad in [(0,256,256,32),(0,192,192,24),(0,256,256,32),(0,160,192,24),(32,224,256,32),(16,128,256,32)]:
+    a=pad if start==0 else 0
+    b=pad if start+extent==limit else 0
+    for q in (-1,0,1):
+        transformed=F(q*extent+a-b,extent+a+b)
+        mapped=(transformed+1)*F(extent+a+b,2)+start+pad-a
+        assert mapped == F(q+1,2)*extent+start+pad
+print("PASS: expanded viewport retains exact native center and independent edge padding")

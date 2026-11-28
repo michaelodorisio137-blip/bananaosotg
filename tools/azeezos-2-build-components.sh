@@ -9,7 +9,7 @@ add() { packages+=("$1"); shift; files+=("$@"); }
 for component in "$@"; do
   case "$component" in
     ui) add banana-ui usr/bin/banana-ui ;;
-    ui-reflection) add banana-ui usr/bin/banana-ui; add bananafront usr/bin/bananafront; add libretro-ppsspp-azeez usr/lib/libretro/ppsspp_azeez_libretro.so usr/share/banana/PPSSPP ;;
+    ui-reflection) add banana-ui usr/bin/banana-ui; add bananafront usr/bin/bananafront; add libretro-ppsspp-azeez usr/lib/libretro/ppsspp_azeez_libretro.so usr/share/banana/PPSSPP; add bananads usr/bin/bananads ;;
     gba) add libretro-mgba usr/lib/libretro/mgba_integer_libretro.so usr/lib/libretro/mgba_expanded_libretro.so ;;
     snes) add libretro-bananasnes usr/lib/libretro/bananasnes_libretro.so ;;
     n64) add libretro-mupen64plus-next usr/lib/libretro/mupen64plus_next_libretro.so ;;
