@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/publish-azeezos-combined-gpu-ota.yml'
       - 'tools/azeezos-2-idle-reflection.py'
+      - 'tools/gpu-launch-session.py'
 permissions:
   contents: write
   actions: read
@@ -115,6 +116,8 @@ jobs:
           cmp gba-component/mgba_gles_preview_libretro.so rootfs/usr/lib/libretro/mgba_gles_preview_libretro.so
           cmp nes-component/usr/lib/libretro/fceumm_libretro.so rootfs/usr/lib/libretro/fceumm_libretro.so
           sh -n rootfs/usr/libexec/banana/run-retroarch
+          grep -Fq '/data/banana/launch-logs/$BANANA_SYSTEM.log' rootfs/usr/libexec/banana/run-retroarch
+          grep -Fq 'auto_overrides_enable = "false"' rootfs/usr/libexec/banana/run-retroarch
           cat > rootfs/usr/share/banana/GBA-GPU-PREVIEW.txt <<'EOF'
           Experimental GBA GPU exterior: 320x240 logical, 640x480 output.
           Select mGBA Hardware (GLES3 Preview) in Settings > Other systems > Emulators > Game Boy Advance.
